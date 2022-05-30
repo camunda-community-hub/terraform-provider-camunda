@@ -3,10 +3,13 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	console "github.com/sijoma/console-customer-api-go"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
@@ -31,11 +34,16 @@ type provider struct {
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
 	version string
+
+	client *console.APIClient
+
+	accessToken string
 }
 
 // providerData can be used to store data from the Terraform configuration.
 type providerData struct {
-	Example types.String `tfsdk:"example"`
+	ClientID     types.String `tfsdk:"client_id"`
+	ClientSecret types.String `tfsdk:"client_secret"`
 }
 
 func (p *provider) Configure(ctx context.Context, req tfsdk.ConfigureProviderRequest, resp *tfsdk.ConfigureProviderResponse) {
@@ -47,18 +55,39 @@ func (p *provider) Configure(ctx context.Context, req tfsdk.ConfigureProviderReq
 		return
 	}
 
-	// Configuration values are now available.
-	// if data.Example.Null { /* ... */ }
+	config := clientcredentials.Config{
+		ClientID:     data.ClientID.Value,
+		ClientSecret: data.ClientSecret.Value,
+		TokenURL:     "https://login.cloud.camunda.io/oauth/token",
+		EndpointParams: url.Values{
+			"audience": []string{"api.cloud.camunda.io"},
+		},
+	}
 
-	// If the upstream provider SDK or HTTP client requires configuration, such
-	// as authentication or logging, this is a great opportunity to do so.
+	token, err := config.Token(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unexpected Provider Error",
+			fmt.Sprintf("Unable to get token: %v", err),
+		)
+		return
+	}
+
+	p.accessToken = token.AccessToken
+
+	cfg := console.NewConfiguration()
+	cfg.Scheme = "https"
+	cfg.Host = "api.cloud.camunda.io"
+	client := console.NewAPIClient(cfg)
+	p.client = client
 
 	p.configured = true
+
 }
 
 func (p *provider) GetResources(ctx context.Context) (map[string]tfsdk.ResourceType, diag.Diagnostics) {
 	return map[string]tfsdk.ResourceType{
-		"scaffolding_example": exampleResourceType{},
+		"camunda_cluster": camundaClusterType{},
 	}, nil
 }
 
@@ -71,9 +100,14 @@ func (p *provider) GetDataSources(ctx context.Context) (map[string]tfsdk.DataSou
 func (p *provider) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
-			"example": {
-				MarkdownDescription: "Example provider attribute",
-				Optional:            true,
+			"client_id": {
+				MarkdownDescription: "Client ID to authenticate against Camunda SaaS",
+				Required:            true,
+				Type:                types.StringType,
+			},
+			"client_secret": {
+				MarkdownDescription: "Client Secret to authenticate against Camunda SaaS",
+				Required:            true,
 				Type:                types.StringType,
 			},
 		},
