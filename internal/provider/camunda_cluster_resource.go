@@ -200,7 +200,7 @@ func (r camundaCluster) Delete(ctx context.Context, req tfsdk.DeleteResourceRequ
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.Value, err),
+			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.Value, err.(console.GenericOpenAPIError).Body()),
 		)
 		return
 	}

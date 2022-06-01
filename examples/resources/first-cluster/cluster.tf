@@ -16,10 +16,6 @@ provider "camunda" {
   client_secret = var.camunda_client_secret
 }
 
-#data "camunda_cloud_channel" "alpha" {
-#  name  = "Alpha"
-#  regex = ""
-#}
 #
 #data "camunda_cloud_region" "eu_west" {
 #  name = "Europe West"
@@ -44,14 +40,32 @@ locals {
   }
 }
 
+data "camunda_channel" "alpha" {
+  name  = "Alpha"
+}
+
+# data "camunda_generations" "alpha" {
+#   channel = data.camunda_channel.alpha.id 
+
+#   filter = "*8.1.0*"
+
+#   # allowed = [{"name": "Zeebe 8.1.0-alpha1", "uuid": "c1f79896-8d0c-41d0-b8c5-0175157d32de"}]
+# }
+
 resource "camunda_cluster" "test" {
   name       = "plop"
-  channel    = local.channels["stable"]
+
+  channel    = data.camunda_channel.alpha.id
+  generation = data.camunda_channel.alpha.default_generation.id
+
   region     = "2f6470f9-77ec-4be5-9cdc-3231caf683ec" // Europe West
   plan_type  = "231932af-0223-4b60-9961-fe4f71800760" // Trial Package
-  generation = local.generations["Zeebe 8.1.0-alpha1"]
 }
 
 output "cluster_id" {
   value = camunda_cluster.test.id
+}
+
+output "generation_name" {
+  value = data.camunda_channel.alpha.default_generation.name
 }
