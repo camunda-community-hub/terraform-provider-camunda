@@ -42,11 +42,17 @@ func (t camundaClusterType) GetSchema(ctx context.Context) (tfsdk.Schema, diag.D
 				MarkdownDescription: "Channel",
 				Required:            true,
 				Type:                types.StringType,
+				PlanModifiers: tfsdk.AttributePlanModifiers{
+					tfsdk.RequiresReplace(),
+				},
 			},
 			"region": {
 				MarkdownDescription: "Region",
 				Required:            true,
 				Type:                types.StringType,
+				PlanModifiers: tfsdk.AttributePlanModifiers{
+					tfsdk.RequiresReplace(),
+				},
 			},
 			"plan_type": {
 				MarkdownDescription: "Plan type",
@@ -110,7 +116,7 @@ func (r camundaCluster) Create(ctx context.Context, req tfsdk.CreateResourceRequ
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster",
-			fmt.Sprintf("Unable to create Camunda cluster: %v", err),
+			fmt.Sprintf("Unable to create cluster, got error: %s", err.(*console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
@@ -135,13 +141,22 @@ func (r camundaCluster) Read(ctx context.Context, req tfsdk.ReadResourceRequest,
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// example, err := d.provider.client.ReadExample(...)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read example, got error: %s", err))
-	//     return
-	// }
+	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
+
+	cluster, _, err := r.provider.client.ClustersApi.GetCluster(ctx, data.Id.Value).Execute()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.Value, err.(console.GenericOpenAPIError).Body()),
+		)
+		return
+	}
+
+	data.Name = types.String{Value: cluster.Name}
+	data.Channel = types.String{Value: cluster.Channel.Uuid}
+	data.Region = types.String{Value: cluster.Region.Uuid}
+	data.PlanType = types.String{Value: cluster.PlanType.Uuid}
+	data.Generation = types.String{Value: cluster.Generation.Uuid}
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -179,13 +194,16 @@ func (r camundaCluster) Delete(ctx context.Context, req tfsdk.DeleteResourceRequ
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// example, err := d.provider.client.DeleteExample(...)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete example, got error: %s", err))
-	//     return
-	// }
+	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
+
+	_, err := r.provider.client.ClustersApi.DeleteCluster(ctx, data.Id.Value).Execute()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.Value, err),
+		)
+		return
+	}
 }
 
 func (r camundaCluster) ImportState(ctx context.Context, req tfsdk.ImportResourceStateRequest, resp *tfsdk.ImportResourceStateResponse) {

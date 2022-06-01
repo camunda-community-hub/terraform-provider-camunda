@@ -12,7 +12,7 @@ terraform {
 
 
 provider "camunda" {
-  client_id 	= var.camunda_client_id
+  client_id     = var.camunda_client_id
   client_secret = var.camunda_client_secret
 }
 
@@ -32,14 +32,26 @@ provider "camunda" {
 #  regex = ".*europe.*"
 #}
 
+locals {
+  channels = {
+    alpha  = "c767585c-eccc-4762-be78-3bfcd562ee1e"
+    stable = "6bdf0d1c-3d5a-4df6-8d03-762682964d85"
+  }
+
+  generations = {
+    "Zeebe 8.0.2"        = "edf8342a-ebeb-44f7-9280-356e9c36a1e2"
+    "Zeebe 8.1.0-alpha1" = "c1f79896-8d0c-41d0-b8c5-0175157d32de"
+  }
+}
+
 resource "camunda_cluster" "test" {
-  name = "foobar"
-  channel    =  "c767585c-eccc-4762-be78-3bfcd562ee1e" // Alpha channel
-  region     = "2f6470f9-77ec-4be5-9cdc-3231caf683ec"  // Europe West
+  name       = "plop"
+  channel    = local.channels["stable"]
+  region     = "2f6470f9-77ec-4be5-9cdc-3231caf683ec" // Europe West
   plan_type  = "231932af-0223-4b60-9961-fe4f71800760" // Trial Package
-  generation = "c1f79896-8d0c-41d0-b8c5-0175157d32de" // Zeebe 8.1.0-alpha1
+  generation = local.generations["Zeebe 8.1.0-alpha1"]
 }
 
 output "cluster_id" {
-	value = camunda_cluster.test.id
+  value = camunda_cluster.test.id
 }
