@@ -83,22 +83,34 @@ func (t channelDataSourceType) GetSchema(ctx context.Context) (tfsdk.Schema, dia
 				Type:                types.StringType,
 				Required:            true,
 			},
-			"default_generation": {
-				MarkdownDescription: "The default generation of this channel",
-				Computed:            true,
-				Attributes: tfsdk.SingleNestedAttributes(
-					map[string]tfsdk.Attribute{
-						"name": {
-							Computed: true,
-							Type:     types.StringType,
-						},
-						"id": {
-							Computed: true,
-							Type:     types.StringType,
-						},
-					},
-				),
+
+			"default_generation_id": {
+				Type:     types.StringType,
+				Computed: true,
 			},
+
+			"default_generation_name": {
+				Type:     types.StringType,
+				Computed: true,
+			},
+
+			// https://github.com/hashicorp/terraform-plugin-framework/issues/191
+			// "default_generation": {
+			// 	MarkdownDescription: "The default generation of this channel",
+			// 	Computed:            true,
+			// 	Attributes: tfsdk.SingleNestedAttributes(
+			// 		map[string]tfsdk.Attribute{
+			// 			"name": {
+			// 				Computed: true,
+			// 				Type:     types.StringType,
+			// 			},
+			// 			"id": {
+			// 				Computed: true,
+			// 				Type:     types.StringType,
+			// 			},
+			// 		},
+			// 	),
+			// },
 		},
 	}, nil
 }
@@ -117,9 +129,13 @@ type generation struct {
 }
 
 type channelDataSourceData struct {
-	Id                types.String `tfsdk:"id"`
-	Name              types.String `tfsdk:"name"`
-	DefaultGeneration generation   `tfsdk:"default_generation"`
+	Id                    types.String `tfsdk:"id"`
+	Name                  types.String `tfsdk:"name"`
+	DefaultGenerationName types.String `tfsdk:"default_generation_name"`
+	DefaultGenerationId   types.String `tfsdk:"default_generation_id"`
+
+	// https://github.com/hashicorp/terraform-plugin-framework/issues/191
+	// DefaultGeneration generation   `tfsdk:"default_generation"`
 }
 
 type channelDataSource struct {
@@ -151,8 +167,8 @@ func (d channelDataSource) Read(ctx context.Context, req tfsdk.ReadDataSourceReq
 		if channel.Name == data.Name.Value {
 			data.Id = types.String{Value: channel.Uuid}
 			data.Name = types.String{Value: channel.Name}
-			data.DefaultGeneration.Id = types.String{Value: channel.DefaultGeneration.Uuid}
-			data.DefaultGeneration.Name = types.String{Value: channel.DefaultGeneration.Name}
+			data.DefaultGenerationId = types.String{Value: channel.DefaultGeneration.Uuid}
+			data.DefaultGenerationName = types.String{Value: channel.DefaultGeneration.Name}
 
 			diags = resp.State.Set(ctx, &data)
 			resp.Diagnostics.Append(diags...)
