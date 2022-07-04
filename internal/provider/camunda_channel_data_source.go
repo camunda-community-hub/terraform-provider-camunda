@@ -2,11 +2,13 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	console "github.com/sijoma/console-customer-api-go"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
@@ -83,6 +85,7 @@ func (t channelDataSourceType) GetSchema(ctx context.Context) (tfsdk.Schema, dia
 			},
 			"default_generation": {
 				MarkdownDescription: "The default generation of this channel",
+				Computed:            true,
 				Attributes: tfsdk.SingleNestedAttributes(
 					map[string]tfsdk.Attribute{
 						"name": {
@@ -129,26 +132,38 @@ func (d channelDataSource) Read(ctx context.Context, req tfsdk.ReadDataSourceReq
 	diags := req.Config.Get(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 
-	log.Printf("got here")
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	log.Printf("got here")
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// channel, err := d.provider.client.Readchannel(...)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read channel, got error: %s", err))
-	//     return
-	// }
+	ctx = context.WithValue(ctx, console.ContextAccessToken, d.provider.accessToken)
+	params, _, err := d.provider.client.ClustersApi.GetParameters(ctx).Execute()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf("Unable to read cluster parameters, got error: %s", err.(console.GenericOpenAPIError).Body()),
+		)
+		return
+	}
 
-	// For the purposes of this channel code, hardcoding a response value to
-	// save into the Terraform state.
-	data.Id = types.String{Value: "example-id"}
+	for _, channel := range params.Channels {
+		if channel.Name == data.Name.Value {
+			data.Id = types.String{Value: channel.Uuid}
+			data.Name = types.String{Value: channel.Name}
+			data.DefaultGeneration.Id = types.String{Value: channel.DefaultGeneration.Uuid}
+			data.DefaultGeneration.Name = types.String{Value: channel.DefaultGeneration.Name}
 
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+			diags = resp.State.Set(ctx, &data)
+			resp.Diagnostics.Append(diags...)
+
+			return
+		}
+	}
+
+	resp.Diagnostics.AddError(
+		"Client Error",
+		fmt.Sprintf("Camunda Cloud channel '%s' not founds", data.Name.Value),
+	)
+	return
 }

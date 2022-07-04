@@ -1,4 +1,3 @@
-
 variable "camunda_client_id" {}
 variable "camunda_client_secret" {}
 
@@ -41,7 +40,7 @@ locals {
 }
 
 data "camunda_channel" "alpha" {
-  name  = "Alpha"
+  name = "Alpha"
 }
 
 # data "camunda_generations" "alpha" {
