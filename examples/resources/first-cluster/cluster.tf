@@ -52,13 +52,13 @@ data "camunda_channel" "alpha" {
 # }
 
 resource "camunda_cluster" "test" {
-  name       = "plop"
+  name = "plop"
 
   channel    = data.camunda_channel.alpha.id
-  generation = data.camunda_channel.alpha.default_generation.id
+  generation = data.camunda_channel.alpha.default_generation_id
 
-  region     = "2f6470f9-77ec-4be5-9cdc-3231caf683ec" // Europe West
-  plan_type  = "231932af-0223-4b60-9961-fe4f71800760" // Trial Package
+  region    = "2f6470f9-77ec-4be5-9cdc-3231caf683ec" // Europe West
+  plan_type = "231932af-0223-4b60-9961-fe4f71800760" // Trial Package
 }
 
 output "cluster_id" {
