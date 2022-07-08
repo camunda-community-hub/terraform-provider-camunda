@@ -49,14 +49,6 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 					tfsdk.RequiresReplace(),
 				},
 			},
-			"client_id": {
-				MarkdownDescription: "The id of the cluster client",
-				Computed:            true,
-				Type:                types.StringType,
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.RequiresReplace(),
-				},
-			},
 			"secret": {
 				Computed:            true,
 				MarkdownDescription: "The client secret",
@@ -72,6 +64,9 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 				Computed:            true,
 				MarkdownDescription: "Zeebe Client Id",
 				Type:                types.StringType,
+				PlanModifiers: tfsdk.AttributePlanModifiers{
+					tfsdk.RequiresReplace(),
+				},
 			},
 			"zeebe_authorization_server_url": {
 				Computed:            true,
@@ -94,7 +89,6 @@ type camundaClusterClientData struct {
 	Id        types.String `tfsdk:"id"`
 	ClusterId types.String `tfsdk:"cluster_id"`
 	Name      types.String `tfsdk:"name"`
-	ClientId  types.String `tfsdk:"client_id"`
 	Secret    types.String `tfsdk:"secret"`
 
 	ZeebeAddress                types.String `tfsdk:"zeebe_address"`
@@ -136,7 +130,7 @@ func (r camundaClusterClient) Create(ctx context.Context, req tfsdk.CreateResour
 	}
 
 	data.Id = types.String{Value: inline.Uuid}
-	data.ClientId = types.String{Value: inline.ClientId}
+	data.ZeebeClientId = types.String{Value: inline.ClientId}
 	data.Secret = types.String{Value: inline.ClientSecret}
 
 	tflog.Info(ctx, "Camunda cluster client created", map[string]interface{}{
@@ -159,7 +153,7 @@ func (r camundaClusterClient) Read(ctx context.Context, req tfsdk.ReadResourceRe
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	client, _, err := r.provider.client.ClientsApi.GetClient(ctx, data.ClusterId.Value, data.ClientId.Value).Execute()
+	client, _, err := r.provider.client.ClientsApi.GetClient(ctx, data.ClusterId.Value, data.ZeebeClientId.Value).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
@@ -211,7 +205,7 @@ func (r camundaClusterClient) Delete(ctx context.Context, req tfsdk.DeleteResour
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	_, err := r.provider.client.ClientsApi.DeleteClient(ctx, data.ClusterId.Value, data.ClientId.Value).Execute()
+	_, err := r.provider.client.ClientsApi.DeleteClient(ctx, data.ClusterId.Value, data.ZeebeClientId.Value).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",

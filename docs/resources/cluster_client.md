@@ -22,7 +22,6 @@ Manage a cluster client on Camunda SaaS
 
 ### Read-Only
 
-- `client_id` (String) The id of the cluster client
 - `id` (String) Cluster Client ID
 - `secret` (String, Sensitive) The client secret
 - `zeebe_address` (String) Zeebe Address
