@@ -147,7 +147,7 @@ func (r camundaCluster) Read(ctx context.Context, req tfsdk.ReadResourceRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.Value, err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.Value, err.(*console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
