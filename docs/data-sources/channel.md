@@ -17,12 +17,12 @@ channel data source
 
 ### Required
 
-- `name` (String) channel identifier
+- `name` (String) The name of the channel
 
 ### Read-Only
 
-- `default_generation_id` (String)
-- `default_generation_name` (String)
-- `id` (String) channel identifier
+- `default_generation_id` (String) The ID of the default generation for this channel
+- `default_generation_name` (String) The name of the default generation for this channel
+- `id` (String) The ID of the channel
 
 

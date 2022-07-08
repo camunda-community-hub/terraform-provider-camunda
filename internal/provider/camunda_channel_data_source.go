@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -74,24 +73,26 @@ func (t channelDataSourceType) GetSchema(ctx context.Context) (tfsdk.Schema, dia
 
 		Attributes: map[string]tfsdk.Attribute{
 			"id": {
-				MarkdownDescription: "channel identifier",
+				MarkdownDescription: "The ID of the channel",
 				Type:                types.StringType,
 				Computed:            true,
 			},
 			"name": {
-				MarkdownDescription: "channel identifier",
+				MarkdownDescription: "The name of the channel",
 				Type:                types.StringType,
 				Required:            true,
 			},
 
 			"default_generation_id": {
-				Type:     types.StringType,
-				Computed: true,
+				MarkdownDescription: "The ID of the default generation for this channel",
+				Type:                types.StringType,
+				Computed:            true,
 			},
 
 			"default_generation_name": {
-				Type:     types.StringType,
-				Computed: true,
+				MarkdownDescription: "The name of the default generation for this channel",
+				Type:                types.StringType,
+				Computed:            true,
 			},
 
 			// https://github.com/hashicorp/terraform-plugin-framework/issues/191
@@ -151,14 +152,13 @@ func (d channelDataSource) Read(ctx context.Context, req tfsdk.ReadDataSourceReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	log.Printf("got here")
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, d.provider.accessToken)
 	params, _, err := d.provider.client.ClustersApi.GetParameters(ctx).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster parameters, got error: %s", err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read parameters, got error: %s", err.(console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
