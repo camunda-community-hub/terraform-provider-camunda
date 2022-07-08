@@ -62,8 +62,8 @@ resource "camunda_cluster" "test" {
 }
 
 resource "camunda_cluster_client" "production" {
-    name = "myClient_Cluster"
-    cluster_id = camunda_cluster.test.id
+  name       = "myClient_Cluster"
+  cluster_id = camunda_cluster.test.id
 }
 output "cluster_id" {
   value = camunda_cluster.test.id
@@ -88,5 +88,5 @@ output "client_zeebe_client_id" {
 
 output "client_secret" {
   sensitive = true
-  value = camunda_cluster_client.production.secret
+  value     = camunda_cluster_client.production.secret
 }
