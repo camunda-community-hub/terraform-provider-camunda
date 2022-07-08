@@ -52,7 +52,7 @@ data "camunda_channel" "alpha" {
 # }
 
 resource "camunda_cluster" "test" {
-  name = "plop"
+  name = "Cluster_Client"
 
   channel    = data.camunda_channel.alpha.id
   generation = data.camunda_channel.alpha.default_generation_id
@@ -61,10 +61,32 @@ resource "camunda_cluster" "test" {
   plan_type = "231932af-0223-4b60-9961-fe4f71800760" // Trial Package
 }
 
+resource "camunda_cluster_client" "production" {
+    name = "myClient_Cluster"
+    cluster_id = camunda_cluster.test.id
+}
 output "cluster_id" {
   value = camunda_cluster.test.id
 }
 
 output "generation_name" {
   value = data.camunda_channel.alpha.default_generation_name
+}
+
+
+output "client_zeebe_address" {
+  value = camunda_cluster_client.production.zeebe_address
+}
+
+output "client_zeebe_authorization_server_url" {
+  value = camunda_cluster_client.production.zeebe_authorization_server_url
+}
+
+output "client_zeebe_client_id" {
+  value = camunda_cluster_client.production.zeebe_client_id
+}
+
+output "client_secret" {
+  sensitive = true
+  value = camunda_cluster_client.production.secret
 }
