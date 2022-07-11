@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/multani/terraform-provider-camunda/internal/validators"
 	console "github.com/sijoma/console-customer-api-go"
 )
 
@@ -47,6 +48,10 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 				Type:                types.StringType,
 				PlanModifiers: tfsdk.AttributePlanModifiers{
 					tfsdk.RequiresReplace(),
+				},
+				Validators: []tfsdk.AttributeValidator{
+					validators.StringLengthBetweenValidator{Min: 1, Max: 50},
+					validators.StringNoSpacesValidator{},
 				},
 			},
 			"secret": {
