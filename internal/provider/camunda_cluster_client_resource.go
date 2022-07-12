@@ -138,6 +138,22 @@ func (r camundaClusterClient) Create(ctx context.Context, req tfsdk.CreateResour
 	data.ZeebeClientId = types.String{Value: inline.ClientId}
 	data.Secret = types.String{Value: inline.ClientSecret}
 
+	clientResp, _, err := r.provider.client.ClientsApi.
+		GetClient(ctx, data.ClusterId.Value, inline.ClientId).
+		Execute()
+
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to fetch client details",
+			fmt.Sprintf("Unable to fetch client details, got error got error: %s",
+				err.(*console.GenericOpenAPIError).Body()))
+	}
+
+	if clientResp != nil {
+		data.ZeebeAddress = types.String{Value: clientResp.ZEEBE_ADDRESS}
+		data.ZeebeAuthorizationServerUrl = types.String{Value: clientResp.ZEEBE_AUTHORIZATION_SERVER_URL}
+	}
+
 	tflog.Info(ctx, "Camunda cluster client created", map[string]interface{}{
 		"Id": data.Id,
 	})
