@@ -3,12 +3,14 @@ package provider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	console "github.com/sijoma/console-customer-api-go"
 )
 
@@ -121,7 +123,8 @@ func (r camundaCluster) Create(ctx context.Context, req tfsdk.CreateResourceRequ
 		return
 	}
 
-	data.Id = types.String{Value: inline.GetClusterId()}
+	clusterId := inline.GetClusterId()
+	data.Id = types.String{Value: clusterId}
 
 	tflog.Info(ctx, "Camunda cluster created", map[string]interface{}{
 		"clusterID": data.Id,
@@ -129,6 +132,49 @@ func (r camundaCluster) Create(ctx context.Context, req tfsdk.CreateResourceRequ
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
+
+	// Creating a cluster takes some time, wait until it's marked healthy.
+	createState := &resource.StateChangeConf{
+		// The cluster states that we need to keep waiting on
+		Pending: []string{
+			string(console.CREATING),
+			string(console.UPDATING),
+		},
+
+		// The cluster states that we would like to reach
+		Target: []string{
+			string(console.HEALTHY),
+		},
+
+		// How many times the target state has to be reached to continue.
+		ContinuousTargetOccurence: 2,
+
+		Refresh: func() (interface{}, string, error) {
+			cluster, _, err := r.provider.client.ClustersApi.
+				GetCluster(ctx, clusterId).
+				Execute()
+
+			if err != nil {
+				return nil, "", err
+			}
+
+			return cluster, string(cluster.Status.Ready), nil
+		},
+
+		Timeout:    30 * time.Minute,
+		Delay:      10 * time.Second,
+		MinTimeout: 5 * time.Second,
+	}
+
+	_, err = createState.WaitForState()
+
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to create cluster",
+			fmt.Sprintf("Cluster %s never got healthy; got error: %s", clusterId, err),
+		)
+		return
+	}
 }
 
 func (r camundaCluster) Read(ctx context.Context, req tfsdk.ReadResourceRequest, resp *tfsdk.ReadResourceResponse) {

@@ -66,5 +66,5 @@ output "cluster_id" {
 }
 
 output "generation_name" {
-  value = data.camunda_channel.alpha.default_generation.name
+  value = data.camunda_channel.alpha.default_generation_name
 }
