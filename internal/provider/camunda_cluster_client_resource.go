@@ -149,6 +149,7 @@ func (r camundaClusterClient) Create(ctx context.Context, req tfsdk.CreateResour
 			"Unable to fetch client details",
 			fmt.Sprintf("Unable to fetch client details, got error got error: %s",
 				err.(*console.GenericOpenAPIError).Body()))
+		return
 	}
 
 	if clientResp != nil {
