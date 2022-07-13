@@ -9,8 +9,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/multani/terraform-provider-camunda/internal/validators"
 	console "github.com/sijoma/console-customer-api-go"
+
+	"github.com/multani/terraform-provider-camunda/internal/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
@@ -128,8 +129,9 @@ func (r camundaClusterClient) Create(ctx context.Context, req tfsdk.CreateResour
 
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create cluster",
-			fmt.Sprintf("Unable to create cluster, got error: %s", err.(*console.GenericOpenAPIError).Body()),
+			"Unable to create cluster client",
+			fmt.Sprintf("Unable to create cluster client, got error: %s",
+				err.(*console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
