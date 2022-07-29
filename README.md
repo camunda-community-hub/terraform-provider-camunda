@@ -6,6 +6,9 @@ This is an unsupported [Terraform](https://www.terraform.io/) provider for [Camu
 Camunda Platform 8 allows you to *Design, automate, and improve any process across your organization*. 
 Further information can be found under https://docs.camunda.io/.
 
+* Documentation: https://registry.terraform.io/providers/multani/camunda/
+
+
 ## Development
 
 This Terraform provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). 
