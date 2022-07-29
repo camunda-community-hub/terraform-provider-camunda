@@ -2,7 +2,7 @@
 
 _Disclaimer: This project is not ready for production usage._
 
-This is an unsupported terraform provider for [Camunda Platform 8](https://camunda.com/platform/).
+This is an unsupported [Terraform](https://www.terraform.io/) provider for [Camunda Platform 8](https://camunda.com/platform/).
 Camunda Platform 8 allows you to *Design, automate, and improve any process across your organization*. 
 Further information can be found under https://docs.camunda.io/.
 
