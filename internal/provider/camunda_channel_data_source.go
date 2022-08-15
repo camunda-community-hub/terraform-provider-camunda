@@ -4,15 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	console "github.com/sijoma/console-customer-api-go"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ tfsdk.DataSourceType = channelDataSourceType{}
-var _ tfsdk.DataSource = channelDataSource{}
+var _ provider.DataSourceType = channelDataSourceType{}
+var _ datasource.DataSource = channelDataSource{}
 
 type channelDataSourceType struct {
 }
@@ -116,7 +118,7 @@ func (t channelDataSourceType) GetSchema(ctx context.Context) (tfsdk.Schema, dia
 	}, nil
 }
 
-func (t channelDataSourceType) NewDataSource(ctx context.Context, in tfsdk.Provider) (tfsdk.DataSource, diag.Diagnostics) {
+func (t channelDataSourceType) NewDataSource(ctx context.Context, in provider.Provider) (datasource.DataSource, diag.Diagnostics) {
 	provider, diags := convertProviderType(in)
 
 	return channelDataSource{
@@ -140,10 +142,10 @@ type channelDataSourceData struct {
 }
 
 type channelDataSource struct {
-	provider provider
+	provider camundaCloudProvider
 }
 
-func (d channelDataSource) Read(ctx context.Context, req tfsdk.ReadDataSourceRequest, resp *tfsdk.ReadDataSourceResponse) {
+func (d channelDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data channelDataSourceData
 
 	diags := req.Config.Get(ctx, &data)

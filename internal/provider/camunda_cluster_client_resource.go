@@ -6,6 +6,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -15,9 +17,9 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ tfsdk.ResourceType = camundaClusterClientType{}
-var _ tfsdk.Resource = camundaClusterClient{}
-var _ tfsdk.ResourceWithImportState = camundaClusterClient{}
+var _ provider.ResourceType = camundaClusterType{}
+var _ resource.Resource = camundaClusterClient{}
+var _ resource.ResourceWithImportState = camundaClusterClient{}
 
 type camundaClusterClientType struct{}
 
@@ -31,7 +33,7 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 				Computed:            true,
 				MarkdownDescription: "Cluster Client ID",
 				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.UseStateForUnknown(),
+					resource.UseStateForUnknown(),
 				},
 				Type: types.StringType,
 			},
@@ -39,7 +41,7 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 				MarkdownDescription: "Cluster ID",
 				Required:            true,
 				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.UseStateForUnknown(),
+					resource.UseStateForUnknown(),
 				},
 				Type: types.StringType,
 			},
@@ -48,7 +50,7 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 				Required:            true,
 				Type:                types.StringType,
 				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.RequiresReplace(),
+					resource.RequiresReplace(),
 				},
 				Validators: []tfsdk.AttributeValidator{
 					validators.StringLengthBetweenValidator{Min: 1, Max: 50},
@@ -71,7 +73,7 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 				MarkdownDescription: "Zeebe Client Id",
 				Type:                types.StringType,
 				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.RequiresReplace(),
+					resource.RequiresReplace(),
 				},
 			},
 			"zeebe_authorization_server_url": {
@@ -83,7 +85,7 @@ func (t camundaClusterClientType) GetSchema(ctx context.Context) (tfsdk.Schema, 
 	}, nil
 }
 
-func (t camundaClusterClientType) NewResource(ctx context.Context, in tfsdk.Provider) (tfsdk.Resource, diag.Diagnostics) {
+func (t camundaClusterClientType) NewResource(ctx context.Context, in provider.Provider) (resource.Resource, diag.Diagnostics) {
 	provider, diags := convertProviderType(in)
 
 	return camundaClusterClient{
@@ -103,10 +105,10 @@ type camundaClusterClientData struct {
 }
 
 type camundaClusterClient struct {
-	provider provider
+	provider camundaCloudProvider
 }
 
-func (r camundaClusterClient) Create(ctx context.Context, req tfsdk.CreateResourceRequest, resp *tfsdk.CreateResourceResponse) {
+func (r camundaClusterClient) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data camundaClusterClientData
 
 	diags := req.Config.Get(ctx, &data)
@@ -165,7 +167,7 @@ func (r camundaClusterClient) Create(ctx context.Context, req tfsdk.CreateResour
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r camundaClusterClient) Read(ctx context.Context, req tfsdk.ReadResourceRequest, resp *tfsdk.ReadResourceResponse) {
+func (r camundaClusterClient) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data camundaClusterClientData
 
 	diags := req.State.Get(ctx, &data)
@@ -195,7 +197,7 @@ func (r camundaClusterClient) Read(ctx context.Context, req tfsdk.ReadResourceRe
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r camundaClusterClient) Update(ctx context.Context, req tfsdk.UpdateResourceRequest, resp *tfsdk.UpdateResourceResponse) {
+func (r camundaClusterClient) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data camundaClusterClientData
 
 	diags := req.Plan.Get(ctx, &data)
@@ -209,7 +211,7 @@ func (r camundaClusterClient) Update(ctx context.Context, req tfsdk.UpdateResour
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r camundaClusterClient) Delete(ctx context.Context, req tfsdk.DeleteResourceRequest, resp *tfsdk.DeleteResourceResponse) {
+func (r camundaClusterClient) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data camundaClusterClientData
 
 	diags := req.State.Get(ctx, &data)
@@ -231,6 +233,6 @@ func (r camundaClusterClient) Delete(ctx context.Context, req tfsdk.DeleteResour
 	}
 }
 
-func (r camundaClusterClient) ImportState(ctx context.Context, req tfsdk.ImportResourceStateRequest, resp *tfsdk.ImportResourceStateResponse) {
-	tfsdk.ResourceImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+func (r camundaClusterClient) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
