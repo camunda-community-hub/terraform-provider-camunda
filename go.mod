@@ -1,6 +1,6 @@
 module github.com/multani/terraform-provider-camunda
 
-go 1.17
+go 1.19
 
 require (
 	github.com/hashicorp/terraform-plugin-docs v0.13.0
