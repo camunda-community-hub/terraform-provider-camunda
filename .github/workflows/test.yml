@@ -15,12 +15,6 @@ on:
 permissions:
   contents: read
 
-# Default values to simplify job configurations below.
-env:
-  # Go language version to use for building. This value should also be updated
-  # in the release workflow if changed.
-  GO_VERSION: '1.17'
-
 jobs:
   # Ensure project builds before running testing matrix
   build:
@@ -30,7 +24,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: "1.19"
       - uses: actions/checkout@v3
       - run: go mod download
       - run: go build -v .
@@ -40,7 +34,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: "1.19"
       - uses: actions/checkout@v3
       - run: go generate ./...
       - name: git diff
@@ -65,7 +59,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: "1.19"
       - uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ matrix.terraform }}
