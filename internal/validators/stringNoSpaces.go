@@ -2,7 +2,6 @@ package validators
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -14,12 +13,12 @@ type StringNoSpacesValidator struct {
 
 // Description returns a plain text description of the validator's behavior, suitable for a practitioner to understand its impact.
 func (v StringNoSpacesValidator) Description(ctx context.Context) string {
-	return fmt.Sprintf("string should not contain spaces")
+	return "string should not contain spaces"
 }
 
 // MarkdownDescription returns a markdown formatted description of the validator's behavior, suitable for a practitioner to understand its impact.
 func (v StringNoSpacesValidator) MarkdownDescription(ctx context.Context) string {
-	return fmt.Sprintf("string should not contain spaces")
+	return "string should not contain spaces"
 }
 
 // Validate runs the main validation logic of the validator, reading configuration data out of `req` and updating `resp` with diagnostics.
@@ -43,7 +42,7 @@ func (v StringNoSpacesValidator) Validate(ctx context.Context, req tfsdk.Validat
 		resp.Diagnostics.AddAttributeError(
 			req.AttributePath,
 			"Invalid String",
-			fmt.Sprintf("String contains spaces"),
+			"String contains spaces",
 		)
 
 		return

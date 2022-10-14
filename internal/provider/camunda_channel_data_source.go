@@ -6,17 +6,39 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	console "github.com/sijoma/console-customer-api-go"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ provider.DataSourceType = channelDataSourceType{}
-var _ datasource.DataSource = channelDataSource{}
+var _ datasource.DataSource = &CamundaChannelDataSource{}
 
-type channelDataSourceType struct {
+// type generation struct {
+// 	Id   types.String `tfsdk:"id"`
+// 	Name types.String `tfsdk:"name"`
+// }
+
+type channelDataSourceData struct {
+	Id                    types.String `tfsdk:"id"`
+	Name                  types.String `tfsdk:"name"`
+	DefaultGenerationName types.String `tfsdk:"default_generation_name"`
+	DefaultGenerationId   types.String `tfsdk:"default_generation_id"`
+
+	// https://github.com/hashicorp/terraform-plugin-framework/issues/191
+	// DefaultGeneration generation   `tfsdk:"default_generation"`
+}
+
+type CamundaChannelDataSource struct {
+	provider *CamundaCloudProvider
+}
+
+func NewCamundaChannelDataSource() datasource.DataSource {
+	return &CamundaChannelDataSource{}
+}
+
+func (d *CamundaChannelDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_channel"
 }
 
 // {
@@ -68,7 +90,7 @@ type channelDataSourceType struct {
 // 	]
 // }
 
-func (t channelDataSourceType) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
+func (d *CamundaChannelDataSource) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "channel data source",
@@ -118,34 +140,27 @@ func (t channelDataSourceType) GetSchema(ctx context.Context) (tfsdk.Schema, dia
 	}, nil
 }
 
-func (t channelDataSourceType) NewDataSource(ctx context.Context, in provider.Provider) (datasource.DataSource, diag.Diagnostics) {
-	provider, diags := convertProviderType(in)
+func (d *CamundaChannelDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Provider not yet configured
+	if req.ProviderData == nil {
+		return
+	}
 
-	return channelDataSource{
-		provider: provider,
-	}, diags
+	provider, ok := req.ProviderData.(*CamundaCloudProvider)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *incidentio.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	d.provider = provider
 }
 
-type generation struct {
-	Id   types.String `tfsdk:"id"`
-	Name types.String `tfsdk:"name"`
-}
-
-type channelDataSourceData struct {
-	Id                    types.String `tfsdk:"id"`
-	Name                  types.String `tfsdk:"name"`
-	DefaultGenerationName types.String `tfsdk:"default_generation_name"`
-	DefaultGenerationId   types.String `tfsdk:"default_generation_id"`
-
-	// https://github.com/hashicorp/terraform-plugin-framework/issues/191
-	// DefaultGeneration generation   `tfsdk:"default_generation"`
-}
-
-type channelDataSource struct {
-	provider camundaCloudProvider
-}
-
-func (d channelDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data channelDataSourceData
 
 	diags := req.Config.Get(ctx, &data)
@@ -160,7 +175,7 @@ func (d channelDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read parameters, got error: %s", err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read parameters, got error: %s", err.(*console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
@@ -183,5 +198,4 @@ func (d channelDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		"Client Error",
 		fmt.Sprintf("Camunda Cloud channel '%s' not founds", data.Name.Value),
 	)
-	return
 }

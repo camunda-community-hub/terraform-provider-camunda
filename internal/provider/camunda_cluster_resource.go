@@ -7,7 +7,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -17,13 +16,31 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ provider.ResourceType = camundaClusterType{}
-var _ resource.Resource = camundaCluster{}
-var _ resource.ResourceWithImportState = camundaCluster{}
+var _ resource.Resource = &CamundaClusterResource{}
+var _ resource.ResourceWithImportState = &CamundaClusterResource{}
 
-type camundaClusterType struct{}
+type camundaClusterData struct {
+	Id         types.String `tfsdk:"id"`
+	Name       types.String `tfsdk:"name"`
+	Channel    types.String `tfsdk:"channel"`
+	Region     types.String `tfsdk:"region"`
+	PlanType   types.String `tfsdk:"plan_type"`
+	Generation types.String `tfsdk:"generation"`
+}
 
-func (t camundaClusterType) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
+type CamundaClusterResource struct {
+	provider *CamundaCloudProvider
+}
+
+func NewCamundaClusterResource() resource.Resource {
+	return &CamundaClusterResource{}
+}
+
+func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_cluster"
+}
+
+func (r *CamundaClusterResource) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Manage a cluster on Camunda SaaS",
@@ -72,28 +89,27 @@ func (t camundaClusterType) GetSchema(ctx context.Context) (tfsdk.Schema, diag.D
 	}, nil
 }
 
-func (t camundaClusterType) NewResource(ctx context.Context, in provider.Provider) (resource.Resource, diag.Diagnostics) {
-	provider, diags := convertProviderType(in)
+func (r *CamundaClusterResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	// Provider not yet configured
+	if req.ProviderData == nil {
+		return
+	}
 
-	return camundaCluster{
-		provider: provider,
-	}, diags
+	provider, ok := req.ProviderData.(*CamundaCloudProvider)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *incidentio.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	r.provider = provider
 }
 
-type camundaClusterData struct {
-	Id         types.String `tfsdk:"id"`
-	Name       types.String `tfsdk:"name"`
-	Channel    types.String `tfsdk:"channel"`
-	Region     types.String `tfsdk:"region"`
-	PlanType   types.String `tfsdk:"plan_type"`
-	Generation types.String `tfsdk:"generation"`
-}
-
-type camundaCluster struct {
-	provider camundaCloudProvider
-}
-
-func (r camundaCluster) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *CamundaClusterResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data camundaClusterData
 
 	diags := req.Config.Get(ctx, &data)
@@ -168,7 +184,7 @@ func (r camundaCluster) Create(ctx context.Context, req resource.CreateRequest, 
 		MinTimeout: 5 * time.Second,
 	}
 
-	_, err = createState.WaitForState()
+	_, err = createState.WaitForStateContext(ctx)
 
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -179,7 +195,7 @@ func (r camundaCluster) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 }
 
-func (r camundaCluster) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data camundaClusterData
 
 	diags := req.State.Get(ctx, &data)
@@ -210,7 +226,7 @@ func (r camundaCluster) Read(ctx context.Context, req resource.ReadRequest, resp
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r camundaCluster) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *CamundaClusterResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data camundaClusterData
 
 	diags := req.Plan.Get(ctx, &data)
@@ -232,7 +248,7 @@ func (r camundaCluster) Update(ctx context.Context, req resource.UpdateRequest, 
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r camundaCluster) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data camundaClusterData
 
 	diags := req.State.Get(ctx, &data)
@@ -254,6 +270,6 @@ func (r camundaCluster) Delete(ctx context.Context, req resource.DeleteRequest, 
 	}
 }
 
-func (r camundaCluster) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *CamundaClusterResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
