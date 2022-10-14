@@ -29,6 +29,7 @@ type CamundaCloudProvider struct {
 type providerData struct {
 	ClientID     types.String `tfsdk:"client_id"`
 	ClientSecret types.String `tfsdk:"client_secret"`
+	Debug        types.Bool   `tfsdk:"debug"`
 }
 
 func New(version string) func() provider.Provider {
@@ -53,6 +54,12 @@ func (p *CamundaCloudProvider) GetSchema(ctx context.Context) (tfsdk.Schema, dia
 				MarkdownDescription: "Client Secret to authenticate against Camunda SaaS",
 				Required:            true,
 				Type:                types.StringType,
+			},
+			"debug": {
+				MarkdownDescription: "Enable debug logs",
+				Required:            false,
+				Optional:            true,
+				Type:                types.BoolType,
 			},
 		},
 	}, nil
@@ -90,6 +97,7 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 	cfg := console.NewConfiguration()
 	cfg.Scheme = "https"
 	cfg.Host = "api.cloud.camunda.io"
+	cfg.Debug = data.Debug.Value
 	client := console.NewAPIClient(cfg)
 	p.client = client
 
