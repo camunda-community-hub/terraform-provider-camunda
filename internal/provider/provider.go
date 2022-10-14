@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	console "github.com/sijoma/console-customer-api-go"
@@ -14,30 +16,12 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ provider.Provider = &camundaCloudProvider{}
+var _ provider.Provider = &CamundaCloudProvider{}
 
-// camundaCloudProvider satisfies the camundaCloudProvider.Provider interface and usually is included
+// CamundaCloudProvider satisfies the CamundaCloudProvider.Provider interface and usually is included
 // with all Resource and DataSource implementations.
-type camundaCloudProvider struct {
-	// client can contain the upstream provider SDK or HTTP client used to
-	// communicate with the upstream service. Resource and DataSource
-	// implementations can then make calls using this client.
-	//
-	// TODO: If appropriate, implement upstream provider SDK or HTTP client.
-	// client vendorsdk.ExampleClient
-
-	// configured is set to true at the end of the Configure method.
-	// This can be used in Resource and DataSource implementations to verify
-	// that the provider was previously configured.
-	configured bool
-
-	// version is set to the provider version on release, "dev" when the
-	// provider is built and ran locally, and "test" when running acceptance
-	// testing.
-	version string
-
-	client *console.APIClient
-
+type CamundaCloudProvider struct {
+	client      *console.APIClient
 	accessToken string
 }
 
@@ -45,9 +29,43 @@ type camundaCloudProvider struct {
 type providerData struct {
 	ClientID     types.String `tfsdk:"client_id"`
 	ClientSecret types.String `tfsdk:"client_secret"`
+	Debug        types.Bool   `tfsdk:"debug"`
 }
 
-func (p *camundaCloudProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+func New(version string) func() provider.Provider {
+	return func() provider.Provider {
+		return &CamundaCloudProvider{}
+	}
+}
+
+func (p CamundaCloudProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+	resp.TypeName = "camunda"
+}
+
+func (p *CamundaCloudProvider) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
+	return tfsdk.Schema{
+		Attributes: map[string]tfsdk.Attribute{
+			"client_id": {
+				MarkdownDescription: "Client ID to authenticate against Camunda SaaS",
+				Required:            true,
+				Type:                types.StringType,
+			},
+			"client_secret": {
+				MarkdownDescription: "Client Secret to authenticate against Camunda SaaS",
+				Required:            true,
+				Type:                types.StringType,
+			},
+			"debug": {
+				MarkdownDescription: "Enable debug logs",
+				Required:            false,
+				Optional:            true,
+				Type:                types.BoolType,
+			},
+		},
+	}, nil
+}
+
+func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var data providerData
 	diags := req.Config.Get(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -79,76 +97,23 @@ func (p *camundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 	cfg := console.NewConfiguration()
 	cfg.Scheme = "https"
 	cfg.Host = "api.cloud.camunda.io"
+	cfg.Debug = data.Debug.Value
 	client := console.NewAPIClient(cfg)
 	p.client = client
 
-	p.configured = true
-
+	resp.DataSourceData = p
+	resp.ResourceData = p
 }
 
-func (p *camundaCloudProvider) GetResources(ctx context.Context) (map[string]provider.ResourceType, diag.Diagnostics) {
-	return map[string]provider.ResourceType{
-		"camunda_cluster":        camundaClusterType{},
-		"camunda_cluster_client": camundaClusterClientType{},
-	}, nil
-}
-
-func (p *camundaCloudProvider) GetDataSources(ctx context.Context) (map[string]provider.DataSourceType, diag.Diagnostics) {
-	return map[string]provider.DataSourceType{
-		"camunda_channel": channelDataSourceType{},
-	}, nil
-}
-
-func (p *camundaCloudProvider) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
-	return tfsdk.Schema{
-		Attributes: map[string]tfsdk.Attribute{
-			"client_id": {
-				MarkdownDescription: "Client ID to authenticate against Camunda SaaS",
-				Required:            true,
-				Type:                types.StringType,
-			},
-			"client_secret": {
-				MarkdownDescription: "Client Secret to authenticate against Camunda SaaS",
-				Required:            true,
-				Type:                types.StringType,
-			},
-		},
-	}, nil
-}
-
-func New(version string) func() provider.Provider {
-	return func() provider.Provider {
-		return &camundaCloudProvider{
-			version: version,
-		}
+func (p *CamundaCloudProvider) Resources(ctx context.Context) []func() resource.Resource {
+	return []func() resource.Resource{
+		NewCamundaClusterResource,
+		NewCamundaClusterClientResource,
 	}
 }
 
-// convertProviderType is a helper function for NewResource and NewDataSource
-// implementations to associate the concrete provider type. Alternatively,
-// this helper can be skipped and the provider type can be directly type
-// asserted (e.g. provider: in.(*provider)), however using this can prevent
-// potential panics.
-func convertProviderType(in provider.Provider) (camundaCloudProvider, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	p, ok := in.(*camundaCloudProvider)
-
-	if !ok {
-		diags.AddError(
-			"Unexpected Provider Instance Type",
-			fmt.Sprintf("While creating the data source or resource, an unexpected provider type (%T) was received. This is always a bug in the provider code and should be reported to the provider developers.", p),
-		)
-		return camundaCloudProvider{}, diags
+func (p *CamundaCloudProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+	return []func() datasource.DataSource{
+		NewCamundaChannelDataSource,
 	}
-
-	if p == nil {
-		diags.AddError(
-			"Unexpected Provider Instance Type",
-			"While creating the data source or resource, an unexpected empty provider instance was received. This is always a bug in the provider code and should be reported to the provider developers.",
-		)
-		return camundaCloudProvider{}, diags
-	}
-
-	return *p, diags
 }

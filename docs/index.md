@@ -25,3 +25,7 @@ provider "scaffolding" {
 
 - `client_id` (String) Client ID to authenticate against Camunda SaaS
 - `client_secret` (String) Client Secret to authenticate against Camunda SaaS
+
+### Optional
+
+- `debug` (Boolean) Enable debug logs
