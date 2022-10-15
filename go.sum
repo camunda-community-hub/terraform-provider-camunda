@@ -359,6 +359,8 @@ github.com/shopspring/decimal v1.3.1 h1:2Usl1nmF/WZucqkFZhnfFYxxxu8LG21F6nPQBE5g
 github.com/shopspring/decimal v1.3.1/go.mod h1:DKyhrW/HYNuLGql+MJL6WCR6knT2jwCFRcu2hWCYk4o=
 github.com/sijoma/console-customer-api-go v0.0.0-20220521162235-5c806ea5fd0d h1:/77AYiDMge6o7etb4TltrdNPdDA7m0loE+W1YXuzyvM=
 github.com/sijoma/console-customer-api-go v0.0.0-20220521162235-5c806ea5fd0d/go.mod h1:wP5OAAG12MISa70eWyH2D/22VjJotJwwzsPtt04+p+g=
+github.com/sijoma/console-customer-api-go v0.0.0-20221015103831-6c9c2042dc4c h1:7m0CEvLe+hbl39oSqFja6rRlpRM6/VjG6PofAb+eyxc=
+github.com/sijoma/console-customer-api-go v0.0.0-20221015103831-6c9c2042dc4c/go.mod h1:wP5OAAG12MISa70eWyH2D/22VjJotJwwzsPtt04+p+g=
 github.com/sirupsen/logrus v1.4.1/go.mod h1:ni0Sbl8bgC9z8RoU9G6nDWqqs/fq4eDPysMBDgk/93Q=
 github.com/spf13/cast v1.3.1/go.mod h1:Qx5cxh0v+4UWYiBimWS+eyWzqEqokIECu5etghLkUJE=
 github.com/spf13/cast v1.5.0 h1:rj3WzYc11XZaIZMPKmwP96zkFEnnAmV8s6XbB2aY32w=
