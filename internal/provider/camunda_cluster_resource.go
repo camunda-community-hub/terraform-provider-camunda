@@ -120,11 +120,11 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	}
 
 	newClusterConfiguration := console.CreateClusterBody{
-		Name:         data.Name.Value,
-		PlanTypeId:   data.PlanType.Value,
-		ChannelId:    data.Channel.Value,
-		GenerationId: data.Generation.Value,
-		RegionId:     data.Region.Value,
+		Name:         data.Name.ValueString(),
+		PlanTypeId:   data.PlanType.ValueString(),
+		ChannelId:    data.Channel.ValueString(),
+		GenerationId: data.Generation.ValueString(),
+		RegionId:     data.Region.ValueString(),
 	}
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
@@ -142,7 +142,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	}
 
 	clusterId := inline.GetClusterId()
-	data.Id = types.String{Value: clusterId}
+	data.Id = types.StringValue(clusterId)
 
 	tflog.Info(ctx, "Camunda cluster created", map[string]interface{}{
 		"clusterID": data.Id,
@@ -207,20 +207,20 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	cluster, _, err := r.provider.client.ClustersApi.GetCluster(ctx, data.Id.Value).Execute()
+	cluster, _, err := r.provider.client.ClustersApi.GetCluster(ctx, data.Id.ValueString()).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.Value, err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), err.(*console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
 
-	data.Name = types.String{Value: cluster.Name}
-	data.Channel = types.String{Value: cluster.Channel.Uuid}
-	data.Region = types.String{Value: cluster.Region.Uuid}
-	data.PlanType = types.String{Value: cluster.PlanType.Uuid}
-	data.Generation = types.String{Value: cluster.Generation.Uuid}
+	data.Name = types.StringValue(cluster.Name)
+	data.Channel = types.StringValue(cluster.Channel.Uuid)
+	data.Region = types.StringValue(cluster.Region.Uuid)
+	data.PlanType = types.StringValue(cluster.PlanType.Uuid)
+	data.Generation = types.StringValue(cluster.Generation.Uuid)
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -260,11 +260,11 @@ func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.Delete
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	_, err := r.provider.client.ClustersApi.DeleteCluster(ctx, data.Id.Value).Execute()
+	_, err := r.provider.client.ClustersApi.DeleteCluster(ctx, data.Id.ValueString()).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.Value, err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), err.(console.GenericOpenAPIError).Body()),
 		)
 		return
 	}

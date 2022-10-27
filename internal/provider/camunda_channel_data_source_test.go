@@ -17,8 +17,8 @@ package provider
 // 	})
 // }
 
-const testAccExampleDataSourceConfig = `
-data "scaffolding_example" "test" {
-  configurable_attribute = "example"
-}
-`
+// const testAccExampleDataSourceConfig = `
+// data "scaffolding_example" "test" {
+//   configurable_attribute = "example"
+// }
+// `

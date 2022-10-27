@@ -36,11 +36,11 @@ func (v StringLengthBetweenValidator) Validate(ctx context.Context, req tfsdk.Va
 		return
 	}
 
-	if str.Unknown || str.Null {
+	if str.IsUnknown() || str.IsNull() {
 		return
 	}
 
-	strLen := len(str.Value)
+	strLen := len(str.ValueString())
 
 	if strLen < v.Min || strLen > v.Max {
 		resp.Diagnostics.AddAttributeError(

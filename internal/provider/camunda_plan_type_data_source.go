@@ -106,11 +106,11 @@ func (d *CamundaClusterPlanTypeDataSource) Read(ctx context.Context, req datasou
 	}
 
 	for _, clusterPlanType := range params.ClusterPlanTypes {
-		if clusterPlanType.Name == data.Name.Value {
-			data.Id = types.String{Value: clusterPlanType.Uuid}
-			data.Name = types.String{Value: clusterPlanType.Name}
-			data.RegionID = types.String{Value: clusterPlanType.Region.Uuid}
-			data.RegionName = types.String{Value: clusterPlanType.Region.Name}
+		if clusterPlanType.Name == data.Name.ValueString() {
+			data.Id = types.StringValue(clusterPlanType.Uuid)
+			data.Name = types.StringValue(clusterPlanType.Name)
+			data.RegionID = types.StringValue(clusterPlanType.Region.Uuid)
+			data.RegionName = types.StringValue(clusterPlanType.Region.Name)
 
 			diags = resp.State.Set(ctx, &data)
 			resp.Diagnostics.Append(diags...)
@@ -121,7 +121,6 @@ func (d *CamundaClusterPlanTypeDataSource) Read(ctx context.Context, req datasou
 
 	resp.Diagnostics.AddError(
 		"Client Error",
-		fmt.Sprintf("Camunda Cloud clusterPlanType '%s' not found", data.Name.Value),
+		fmt.Sprintf("Camunda Cloud clusterPlanType '%s' not found", data.Name.ValueString()),
 	)
-	return
 }
