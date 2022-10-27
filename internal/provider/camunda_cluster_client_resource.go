@@ -135,13 +135,13 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 	}
 
 	newClusterClientConfiguration := console.CreateClusterClientBody{
-		ClientName: data.Name.Value,
+		ClientName: data.Name.ValueString(),
 	}
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	inline, _, err := r.provider.client.ClientsApi.
-		CreateClient(ctx, data.ClusterId.Value).
+		CreateClient(ctx, data.ClusterId.ValueString()).
 		CreateClusterClientBody(newClusterClientConfiguration).
 		Execute()
 
@@ -154,12 +154,12 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 		return
 	}
 
-	data.Id = types.String{Value: inline.Uuid}
-	data.ZeebeClientId = types.String{Value: inline.ClientId}
-	data.Secret = types.String{Value: inline.ClientSecret}
+	data.Id = types.StringValue(inline.Uuid)
+	data.ZeebeClientId = types.StringValue(inline.ClientId)
+	data.Secret = types.StringValue(inline.ClientSecret)
 
 	clientResp, _, err := r.provider.client.ClientsApi.
-		GetClient(ctx, data.ClusterId.Value, inline.ClientId).
+		GetClient(ctx, data.ClusterId.ValueString(), inline.ClientId).
 		Execute()
 
 	if err != nil {
@@ -171,8 +171,8 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 	}
 
 	if clientResp != nil {
-		data.ZeebeAddress = types.String{Value: clientResp.ZEEBE_ADDRESS}
-		data.ZeebeAuthorizationServerUrl = types.String{Value: clientResp.ZEEBE_AUTHORIZATION_SERVER_URL}
+		data.ZeebeAddress = types.StringValue(clientResp.ZEEBE_ADDRESS)
+		data.ZeebeAuthorizationServerUrl = types.StringValue(clientResp.ZEEBE_AUTHORIZATION_SERVER_URL)
 	}
 
 	tflog.Info(ctx, "Camunda cluster client created", map[string]interface{}{
@@ -195,19 +195,19 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	client, _, err := r.provider.client.ClientsApi.GetClient(ctx, data.ClusterId.Value, data.ZeebeClientId.Value).Execute()
+	client, _, err := r.provider.client.ClientsApi.GetClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster client ID=%s, got error: %s", data.Id.Value, err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read cluster client ID=%s, got error: %s", data.Id.ValueString(), err.(*console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
 
-	data.Name = types.String{Value: client.Name}
-	data.ZeebeClientId = types.String{Value: client.ZEEBE_CLIENT_ID}
-	data.ZeebeAddress = types.String{Value: client.ZEEBE_ADDRESS}
-	data.ZeebeAuthorizationServerUrl = types.String{Value: client.ZEEBE_AUTHORIZATION_SERVER_URL}
+	data.Name = types.StringValue(client.Name)
+	data.ZeebeClientId = types.StringValue(client.ZEEBE_CLIENT_ID)
+	data.ZeebeAddress = types.StringValue(client.ZEEBE_ADDRESS)
+	data.ZeebeAuthorizationServerUrl = types.StringValue(client.ZEEBE_AUTHORIZATION_SERVER_URL)
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -239,11 +239,11 @@ func (r *CamundaClusterClientResource) Delete(ctx context.Context, req resource.
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	_, err := r.provider.client.ClientsApi.DeleteClient(ctx, data.ClusterId.Value, data.ZeebeClientId.Value).Execute()
+	_, err := r.provider.client.ClientsApi.DeleteClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete cluster client ID=%s, got error: %s", data.Id.Value, err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to delete cluster client ID=%s, got error: %s", data.Id.ValueString(), err.(console.GenericOpenAPIError).Body()),
 		)
 		return
 	}

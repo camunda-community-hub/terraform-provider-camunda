@@ -181,11 +181,11 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 	}
 
 	for _, channel := range params.Channels {
-		if channel.Name == data.Name.Value {
-			data.Id = types.String{Value: channel.Uuid}
-			data.Name = types.String{Value: channel.Name}
-			data.DefaultGenerationId = types.String{Value: channel.DefaultGeneration.Uuid}
-			data.DefaultGenerationName = types.String{Value: channel.DefaultGeneration.Name}
+		if channel.Name == data.Name.ValueString() {
+			data.Id = types.StringValue(channel.Uuid)
+			data.Name = types.StringValue(channel.Name)
+			data.DefaultGenerationId = types.StringValue(channel.DefaultGeneration.Uuid)
+			data.DefaultGenerationName = types.StringValue(channel.DefaultGeneration.Name)
 
 			diags = resp.State.Set(ctx, &data)
 			resp.Diagnostics.Append(diags...)
@@ -196,6 +196,6 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 
 	resp.Diagnostics.AddError(
 		"Client Error",
-		fmt.Sprintf("Camunda Cloud channel '%s' not founds", data.Name.Value),
+		fmt.Sprintf("Camunda Cloud channel '%s' not founds", data.Name.ValueString()),
 	)
 }

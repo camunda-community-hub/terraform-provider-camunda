@@ -34,7 +34,7 @@ func (v StringNoSpacesValidator) Validate(ctx context.Context, req tfsdk.Validat
 		return
 	}
 
-	if str.Unknown || str.Null {
+	if str.IsUnknown() || str.IsNull() {
 		return
 	}
 

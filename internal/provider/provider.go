@@ -75,8 +75,8 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 	}
 
 	config := clientcredentials.Config{
-		ClientID:     data.ClientID.Value,
-		ClientSecret: data.ClientSecret.Value,
+		ClientID:     data.ClientID.ValueString(),
+		ClientSecret: data.ClientSecret.ValueString(),
 		TokenURL:     "https://login.cloud.camunda.io/oauth/token",
 		EndpointParams: url.Values{
 			"audience": []string{"api.cloud.camunda.io"},
@@ -97,7 +97,7 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 	cfg := console.NewConfiguration()
 	cfg.Scheme = "https"
 	cfg.Host = "api.cloud.camunda.io"
-	cfg.Debug = data.Debug.Value
+	cfg.Debug = data.Debug.ValueBool()
 	client := console.NewAPIClient(cfg)
 	p.client = client
 
