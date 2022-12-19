@@ -6,10 +6,10 @@ import (
 	"net/url"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
+
 	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	console "github.com/sijoma/console-customer-api-go"
 	"golang.org/x/oauth2/clientcredentials"
@@ -38,31 +38,28 @@ func New(version string) func() provider.Provider {
 	}
 }
 
-func (p CamundaCloudProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *CamundaCloudProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "camunda"
 }
 
-func (p *CamundaCloudProvider) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
-	return tfsdk.Schema{
-		Attributes: map[string]tfsdk.Attribute{
-			"client_id": {
+func (p *CamundaCloudProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			"client_id": schema.StringAttribute{
 				MarkdownDescription: "Client ID to authenticate against Camunda SaaS",
 				Required:            true,
-				Type:                types.StringType,
 			},
-			"client_secret": {
+			"client_secret": schema.StringAttribute{
 				MarkdownDescription: "Client Secret to authenticate against Camunda SaaS",
 				Required:            true,
-				Type:                types.StringType,
 			},
-			"debug": {
+			"debug": schema.BoolAttribute{
 				MarkdownDescription: "Enable debug logs",
 				Required:            false,
 				Optional:            true,
-				Type:                types.BoolType,
 			},
 		},
-	}, nil
+	}
 }
 
 func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
