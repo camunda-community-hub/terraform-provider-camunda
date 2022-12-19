@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -22,13 +23,13 @@ func (v StringNoSpacesValidator) MarkdownDescription(ctx context.Context) string
 }
 
 // Validate runs the main validation logic of the validator, reading configuration data out of `req` and updating `resp` with diagnostics.
-func (v StringNoSpacesValidator) Validate(ctx context.Context, req tfsdk.ValidateAttributeRequest, resp *tfsdk.ValidateAttributeResponse) {
+func (v StringNoSpacesValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	// types.String must be the attr.Value produced by the attr.Type in the schema for this attribute
 	// for generic validators, use
 	// https://pkg.go.dev/github.com/hashicorp/terraform-plugin-framework/tfsdk#ConvertValue
 	// to convert into a known type.
 	var str types.String
-	diags := tfsdk.ValueAs(ctx, req.AttributeConfig, &str)
+	diags := tfsdk.ValueAs(ctx, req.ConfigValue, &str)
 	resp.Diagnostics.Append(diags...)
 	if diags.HasError() {
 		return
@@ -40,7 +41,7 @@ func (v StringNoSpacesValidator) Validate(ctx context.Context, req tfsdk.Validat
 
 	if strings.Contains(str.String(), " ") {
 		resp.Diagnostics.AddAttributeError(
-			req.AttributePath,
+			req.Path,
 			"Invalid String",
 			"String contains spaces",
 		)

@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	console "github.com/sijoma/console-customer-api-go"
-
 	"github.com/multani/terraform-provider-camunda/internal/validators"
+	console "github.com/sijoma/console-customer-api-go"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
@@ -42,66 +43,51 @@ func (r *CamundaClusterClientResource) Metadata(ctx context.Context, req resourc
 	resp.TypeName = req.ProviderTypeName + "_cluster_client"
 }
 
-func (r *CamundaClusterClientResource) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
-	return tfsdk.Schema{
+func (r *CamundaClusterClientResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Manage a cluster client on Camunda SaaS",
 
-		Attributes: map[string]tfsdk.Attribute{
-			"id": {
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Cluster Client ID",
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					resource.UseStateForUnknown(),
-				},
-				Type: types.StringType,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"cluster_id": {
+			"cluster_id": schema.StringAttribute{
 				MarkdownDescription: "Cluster ID",
 				Required:            true,
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					resource.UseStateForUnknown(),
-				},
-				Type: types.StringType,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"name": {
+			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the cluster client",
 				Required:            true,
-				Type:                types.StringType,
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					resource.RequiresReplace(),
-				},
-				Validators: []tfsdk.AttributeValidator{
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Validators: []validator.String{
 					validators.StringLengthBetweenValidator{Min: 1, Max: 50},
 					validators.StringNoSpacesValidator{},
 				},
 			},
-			"secret": {
+			"secret": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The client secret",
-				Type:                types.StringType,
 				Sensitive:           true,
 			},
-			"zeebe_address": {
+			"zeebe_address": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Zeebe Address",
-				Type:                types.StringType,
 			},
-			"zeebe_client_id": {
+			"zeebe_client_id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Zeebe Client Id",
-				Type:                types.StringType,
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					resource.RequiresReplace(),
-				},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
-			"zeebe_authorization_server_url": {
+			"zeebe_authorization_server_url": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Zeebe Authorization Server Url",
-				Type:                types.StringType,
 			},
 		},
-	}, nil
+	}
 }
 
 func (r *CamundaClusterClientResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {

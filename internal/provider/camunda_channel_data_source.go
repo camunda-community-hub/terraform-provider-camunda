@@ -5,8 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	console "github.com/sijoma/console-customer-api-go"
 )
@@ -39,6 +38,34 @@ func NewCamundaChannelDataSource() datasource.DataSource {
 
 func (d *CamundaChannelDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_channel"
+}
+
+func (d *CamundaChannelDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		// This description is used by the documentation generator and the language server.
+		MarkdownDescription: "channel data source",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				MarkdownDescription: "The ID of the channel",
+				Computed:            true,
+			},
+			"name": schema.StringAttribute{
+				MarkdownDescription: "The name of the channel",
+				Required:            true,
+			},
+
+			"default_generation_id": schema.StringAttribute{
+				MarkdownDescription: "The ID of the default generation for this channel",
+				Computed:            true,
+			},
+
+			"default_generation_name": schema.StringAttribute{
+				MarkdownDescription: "The name of the default generation for this channel",
+				Computed:            true,
+			},
+		},
+	}
 }
 
 // {
@@ -89,56 +116,6 @@ func (d *CamundaChannelDataSource) Metadata(ctx context.Context, req datasource.
 // 			}
 // 	]
 // }
-
-func (d *CamundaChannelDataSource) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
-	return tfsdk.Schema{
-		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "channel data source",
-
-		Attributes: map[string]tfsdk.Attribute{
-			"id": {
-				MarkdownDescription: "The ID of the channel",
-				Type:                types.StringType,
-				Computed:            true,
-			},
-			"name": {
-				MarkdownDescription: "The name of the channel",
-				Type:                types.StringType,
-				Required:            true,
-			},
-
-			"default_generation_id": {
-				MarkdownDescription: "The ID of the default generation for this channel",
-				Type:                types.StringType,
-				Computed:            true,
-			},
-
-			"default_generation_name": {
-				MarkdownDescription: "The name of the default generation for this channel",
-				Type:                types.StringType,
-				Computed:            true,
-			},
-
-			// https://github.com/hashicorp/terraform-plugin-framework/issues/191
-			// "default_generation": {
-			// 	MarkdownDescription: "The default generation of this channel",
-			// 	Computed:            true,
-			// 	Attributes: tfsdk.SingleNestedAttributes(
-			// 		map[string]tfsdk.Attribute{
-			// 			"name": {
-			// 				Computed: true,
-			// 				Type:     types.StringType,
-			// 			},
-			// 			"id": {
-			// 				Computed: true,
-			// 				Type:     types.StringType,
-			// 			},
-			// 		},
-			// 	),
-			// },
-		},
-	}, nil
-}
 
 func (d *CamundaChannelDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Provider not yet configured

@@ -5,8 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	console "github.com/sijoma/console-customer-api-go"
 )
@@ -33,36 +32,32 @@ func (d *CamundaClusterPlanTypeDataSource) Metadata(ctx context.Context, req dat
 	resp.TypeName = req.ProviderTypeName + "_cluster_plan_type"
 }
 
-func (d *CamundaClusterPlanTypeDataSource) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
-	return tfsdk.Schema{
+func (d *CamundaClusterPlanTypeDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "clusterPlanType data source",
 
-		Attributes: map[string]tfsdk.Attribute{
-			"id": {
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the clusterPlanType",
-				Type:                types.StringType,
 				Computed:            true,
 			},
-			"name": {
+			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the clusterPlanType",
-				Type:                types.StringType,
 				Required:            true,
 			},
 
-			"region_id": {
+			"region_id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the region for this clusterPlanType",
-				Type:                types.StringType,
 				Computed:            true,
 			},
 
-			"region_name": {
+			"region_name": schema.StringAttribute{
 				MarkdownDescription: "The name of the for this clusterPlanType",
-				Type:                types.StringType,
 				Computed:            true,
 			},
 		},
-	}, nil
+	}
 }
 
 func (d *CamundaClusterPlanTypeDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
