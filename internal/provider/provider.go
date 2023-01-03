@@ -28,6 +28,9 @@ type CamundaCloudProvider struct {
 type providerData struct {
 	ClientID     types.String `tfsdk:"client_id"`
 	ClientSecret types.String `tfsdk:"client_secret"`
+	ApiUrl       types.String `tfsdk:"api_url"`
+	TokenUrl     types.String `tfsdk:"token_url"`
+	Audience     types.String `tfsdk:"audience"`
 	Debug        types.Bool   `tfsdk:"debug"`
 }
 
@@ -57,6 +60,21 @@ func (p *CamundaCloudProvider) Schema(ctx context.Context, req provider.SchemaRe
 				Required:            false,
 				Optional:            true,
 			},
+			"api_url": schema.StringAttribute{
+				MarkdownDescription: "URL to Camunda SaaS API",
+				Required:            false,
+				Optional:            true,
+			},
+			"token_url": schema.StringAttribute{
+				MarkdownDescription: "URL to fetch token from",
+				Required:            false,
+				Optional:            true,
+			},
+			"audience": schema.StringAttribute{
+				MarkdownDescription: "Audience of the token",
+				Required:            false,
+				Optional:            true,
+			},
 		},
 	}
 }
@@ -70,12 +88,36 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 		return
 	}
 
+	consoleApiUrl := "https://api.cloud.camunda.io"
+	if !data.ApiUrl.IsNull() {
+		consoleApiUrl = data.ApiUrl.ValueString()
+	}
+
+	apiUrl, err := url.Parse(consoleApiUrl)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unexpected Provider Error",
+			fmt.Sprintf("Unable to parse API URL: %v", err),
+		)
+		return
+	}
+
+	tokenUrl := "https://login.cloud.camunda.io/oauth/token"
+	if !data.TokenUrl.IsNull() {
+		tokenUrl = data.TokenUrl.ValueString()
+	}
+
+	audience := apiUrl.Host
+	if !data.Audience.IsNull() {
+		audience = data.Audience.ValueString()
+	}
+
 	config := clientcredentials.Config{
 		ClientID:     data.ClientID.ValueString(),
 		ClientSecret: data.ClientSecret.ValueString(),
-		TokenURL:     "https://login.cloud.camunda.io/oauth/token",
+		TokenURL:     tokenUrl,
 		EndpointParams: url.Values{
-			"audience": []string{"api.cloud.camunda.io"},
+			"audience": []string{audience},
 		},
 	}
 
@@ -91,8 +133,8 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 	p.accessToken = token.AccessToken
 
 	cfg := console.NewConfiguration()
-	cfg.Scheme = "https"
-	cfg.Host = "api.cloud.camunda.io"
+	cfg.Scheme = apiUrl.Scheme
+	cfg.Host = apiUrl.Host
 	cfg.Debug = data.Debug.ValueBool()
 	client := console.NewAPIClient(cfg)
 	p.client = client
