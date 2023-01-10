@@ -116,6 +116,6 @@ func (d *CamundaClusterPlanTypeDataSource) Read(ctx context.Context, req datasou
 
 	resp.Diagnostics.AddError(
 		"Client Error",
-		fmt.Sprintf("Camunda Cloud clusterPlanType '%s' not found", data.Name.ValueString()),
+		fmt.Sprintf("Camunda Cloud clusterPlanType '%s' not found.", data.Name.ValueString()),
 	)
 }

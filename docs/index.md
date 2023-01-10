@@ -32,4 +32,7 @@ provider "camunda" {
 
 ### Optional
 
+- `api_url` (String) URL to Camunda SaaS API
+- `audience` (String) Audience of the token
 - `debug` (Boolean) Enable debug logs
+- `token_url` (String) URL to fetch token from

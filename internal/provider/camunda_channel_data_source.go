@@ -173,6 +173,6 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 
 	resp.Diagnostics.AddError(
 		"Client Error",
-		fmt.Sprintf("Camunda Cloud channel '%s' not founds", data.Name.ValueString()),
+		fmt.Sprintf("Camunda Cloud channel '%s' not found.", data.Name.ValueString()),
 	)
 }
