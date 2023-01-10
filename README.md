@@ -1,17 +1,21 @@
-# Camunda Platform 8 Terraform Provider 
+# Camunda Platform 8 Terraform Provider
 
 _Disclaimer: This project is not ready for production usage._
 
 This is an unsupported [Terraform](https://www.terraform.io/) provider for [Camunda Platform 8](https://camunda.com/platform/).
-Camunda Platform 8 allows you to *Design, automate, and improve any process across your organization*. 
+
+Camunda Platform 8 allows you to *Design, automate, and improve any process across your organization*.
 Further information can be found under https://docs.camunda.io/.
+
+This Terraform provider allows to manage the resources provided by the Camunda
+Platform 8, such as clusters, clients, etc.
 
 * Documentation: https://registry.terraform.io/providers/multani/camunda/
 
 
 ## Development
 
-This Terraform provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). 
+This Terraform provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework).
 
 ### Building The Provider
 

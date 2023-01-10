@@ -1,0 +1,30 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  {{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/data-sources/camunda_cluster_plan_type/data-source.tf" }}
+
+The ID can be used to create a new cluster:
+
+```tf
+resource "camunda_cluster" "test" {
+  name = "test"
+
+  plan_type  = data.camunda_cluster_plan_type.trial.id
+
+  channel    = "..."
+  generation = "..."
+  region     = "..."
+}
+```
+
+{{ .SchemaMarkdown | trimspace }}

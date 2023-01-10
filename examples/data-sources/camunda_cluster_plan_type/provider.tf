@@ -14,11 +14,3 @@ provider "camunda" {
   client_id     = var.camunda_client_id
   client_secret = var.camunda_client_secret
 }
-
-data "camunda_channel" "alpha" {
-  name = "Alpha"
-}
-
-output "data" {
-  value = data.camunda_channel.alpha
-}

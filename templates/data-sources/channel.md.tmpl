@@ -1,0 +1,32 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  {{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/data-sources/camunda_channel/data-source.tf" }}
+
+The channel can then be used when creating a new cluster, and also to select the
+generation from the default generation of that channel.
+
+
+```tf
+resource "camunda_cluster" "test" {
+  name = "test"
+
+  channel    = data.camunda_channel.alpha.id
+  generation = data.camunda_channel.alpha.default_generation_id
+
+  plan_type  = "..."
+  region     = "..."
+}
+```
+
+{{ .SchemaMarkdown | trimspace }}
