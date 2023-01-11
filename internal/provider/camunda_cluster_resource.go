@@ -16,7 +16,6 @@ import (
 	console "github.com/sijoma/console-customer-api-go"
 )
 
-// Ensure provider defined types fully satisfy framework interfaces
 var _ resource.Resource = &CamundaClusterResource{}
 var _ resource.ResourceWithImportState = &CamundaClusterResource{}
 
@@ -43,7 +42,6 @@ func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.Meta
 
 func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Manage a cluster on Camunda SaaS",
 
 		Attributes: map[string]schema.Attribute{

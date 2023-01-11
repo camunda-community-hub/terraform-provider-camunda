@@ -1,20 +1,3 @@
-variable "camunda_client_id" {}
-variable "camunda_client_secret" {}
-
-terraform {
-  required_providers {
-    camunda = {
-      source = "multani/camunda"
-    }
-  }
-}
-
-provider "camunda" {
-  client_id     = var.camunda_client_id
-  client_secret = var.camunda_client_secret
-  debug         = false
-}
-
 # The channel containing the most recent version of Zeebe.
 data "camunda_channel" "alpha" {
   name = "Alpha"
@@ -37,12 +20,4 @@ resource "camunda_cluster" "test" {
   generation = data.camunda_channel.alpha.default_generation_id
   region     = data.camunda_region.trial.id
   plan_type  = data.camunda_cluster_plan_type.trial.id
-}
-
-output "cluster_id" {
-  value = camunda_cluster.test.id
-}
-
-output "generation_name" {
-  value = data.camunda_channel.alpha.default_generation_name
 }

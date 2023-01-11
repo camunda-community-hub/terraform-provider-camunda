@@ -1,6 +1,13 @@
-# Get the client ID and client secret from https://console.cloud.camunda.io/
 variable "camunda_client_id" {}
 variable "camunda_client_secret" {}
+
+terraform {
+  required_providers {
+    camunda = {
+      source = "multani/camunda"
+    }
+  }
+}
 
 provider "camunda" {
   client_id     = var.camunda_client_id

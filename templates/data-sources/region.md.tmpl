@@ -1,0 +1,28 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  {{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/data-sources/camunda_region/data-source.tf" }}
+
+```tf
+resource "camunda_cluster" "test" {
+  name = "test"
+
+  region     = data.camunda_region.europe.id
+
+  channel    = "..."
+  generation = "..."
+  plan_type  = "..."
+}
+```
+
+{{ .SchemaMarkdown | trimspace }}
