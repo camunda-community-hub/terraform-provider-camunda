@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	sdkresource "github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	console "github.com/sijoma/console-customer-api-go"
 )
 
@@ -139,7 +139,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(diags...)
 
 	// Creating a cluster takes some time, wait until it's marked healthy.
-	createState := &sdkresource.StateChangeConf{
+	createState := &retry.StateChangeConf{
 		// The cluster states that we need to keep waiting on
 		Pending: []string{
 			string(console.CREATING),
