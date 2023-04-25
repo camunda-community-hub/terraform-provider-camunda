@@ -147,6 +147,7 @@ func (p *CamundaCloudProvider) Resources(ctx context.Context) []func() resource.
 	return []func() resource.Resource{
 		NewCamundaClusterResource,
 		NewCamundaClusterClientResource,
+		NewCamundaClusterConnectorSecretResource,
 	}
 }
 
