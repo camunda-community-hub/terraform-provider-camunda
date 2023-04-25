@@ -45,5 +45,3 @@ resource "camunda_cluster" "test" {
 ### Read-Only
 
 - `id` (String) The ID of the clusterPlanType
-- `region_id` (String) The ID of the region for this clusterPlanType
-- `region_name` (String) The name of the for this clusterPlanType
