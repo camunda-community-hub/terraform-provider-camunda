@@ -5,12 +5,12 @@ data "camunda_channel" "alpha" {
 
 # A cluster plan type for default trials.
 data "camunda_cluster_plan_type" "trial" {
-  name = "Trial Package"
+  name = "Trial Cluster"
 }
 
 # The region associated with the trial plan.
-data "camunda_region" "trial" {
-  name = data.camunda_cluster_plan_type.trial.region_name
+data "camunda_region" "europe" {
+  name = "Belgium, Europe (europe-west1)"
 }
 
 resource "camunda_cluster" "test" {
@@ -18,6 +18,6 @@ resource "camunda_cluster" "test" {
 
   channel    = data.camunda_channel.alpha.id
   generation = data.camunda_channel.alpha.default_generation_id
-  region     = data.camunda_region.trial.id
+  region     = data.camunda_region.europe.id
   plan_type  = data.camunda_cluster_plan_type.trial.id
 }
