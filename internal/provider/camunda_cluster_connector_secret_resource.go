@@ -65,8 +65,10 @@ func (r *CamundaClusterConnectorSecretResource) Schema(ctx context.Context, req 
 			"value": schema.StringAttribute{
 				MarkdownDescription: "The value of the connector secret",
 				Required:            true,
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				Sensitive:           true,
+				// Todo: Its actually also possible to update the secret value in-place. Not sure whether
+				// that just needs a different implementation or the API is not documented in the spec.
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Sensitive:     true,
 			},
 		},
 	}
@@ -155,27 +157,32 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 
 	}
 
-	secret, _, err := r.provider.client.ClustersApi.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
+	secrets, _, err := r.provider.client.ClustersApi.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Connector Secret Error",
-			fmt.Sprintf("Unable to read cluster connector secret Name=%s, ClusterID=%s, got error: %s",
+			fmt.Sprintf("Unable to read cluster connector secrets Name=%s, ClusterID=%s, got error: %s",
 				data.Name.ValueString(), data.ClusterId.ValueString(), err.(*console.GenericOpenAPIError).Body()),
 		)
 		return
 	}
 
-	// Find secret name in list of secrets
+	// Find secrets name in list of secrets
+	// We also check if the value changed
 	found := false
-	for key, _ := range secret {
+	for key, value := range secrets {
 		if key == data.Name.ValueString() {
 			found = true
+			if value != data.Value.ValueString() {
+				data.Value = types.StringValue(value)
+			}
 			break
 		}
 	}
 
 	// Remove secret from state
 	if found == false {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
