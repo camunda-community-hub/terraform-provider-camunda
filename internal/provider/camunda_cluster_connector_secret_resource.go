@@ -181,7 +181,7 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 	}
 
 	// Remove secret from state
-	if found == false {
+	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
