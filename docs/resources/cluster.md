@@ -32,7 +32,7 @@ data "camunda_region" "europe" {
 }
 
 resource "camunda_cluster" "test" {
-  name = "test"
+  name = "test2"
 
   channel    = data.camunda_channel.alpha.id
   generation = data.camunda_channel.alpha.default_generation_id
