@@ -8,7 +8,7 @@ data "camunda_cluster_plan_type" "trial" {
   name = "Trial Cluster"
 }
 
-# The region associated with the trial plan.
+# An available region
 data "camunda_region" "trial" {
   name = "Belgium, Europe (europe-west1)"
 }
