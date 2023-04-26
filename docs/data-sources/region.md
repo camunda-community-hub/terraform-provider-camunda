@@ -13,7 +13,7 @@ region data source
 
 ```terraform
 data "camunda_region" "europe" {
-  name = "Europe West"
+  name = "Belgium, Europe (europe-west1)"
 }
 
 output "region" {

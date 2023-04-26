@@ -14,10 +14,8 @@ import (
 var _ datasource.DataSource = &CamundaClusterPlanTypeDataSource{}
 
 type clusterPlanTypeDataSourceData struct {
-	Id         types.String `tfsdk:"id"`
-	Name       types.String `tfsdk:"name"`
-	RegionName types.String `tfsdk:"region_name"`
-	RegionID   types.String `tfsdk:"region_id"`
+	Id   types.String `tfsdk:"id"`
+	Name types.String `tfsdk:"name"`
 }
 
 type CamundaClusterPlanTypeDataSource struct {
@@ -45,16 +43,6 @@ func (d *CamundaClusterPlanTypeDataSource) Schema(ctx context.Context, req datas
 			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the clusterPlanType",
 				Required:            true,
-			},
-
-			"region_id": schema.StringAttribute{
-				MarkdownDescription: "The ID of the region for this clusterPlanType",
-				Computed:            true,
-			},
-
-			"region_name": schema.StringAttribute{
-				MarkdownDescription: "The name of the for this clusterPlanType",
-				Computed:            true,
 			},
 		},
 	}
@@ -104,8 +92,6 @@ func (d *CamundaClusterPlanTypeDataSource) Read(ctx context.Context, req datasou
 		if clusterPlanType.Name == data.Name.ValueString() {
 			data.Id = types.StringValue(clusterPlanType.Uuid)
 			data.Name = types.StringValue(clusterPlanType.Name)
-			data.RegionID = types.StringValue(clusterPlanType.Region.Uuid)
-			data.RegionName = types.StringValue(clusterPlanType.Region.Name)
 
 			diags = resp.State.Set(ctx, &data)
 			resp.Diagnostics.Append(diags...)
