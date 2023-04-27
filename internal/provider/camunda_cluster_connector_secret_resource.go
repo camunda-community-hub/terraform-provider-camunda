@@ -22,7 +22,6 @@ var _ resource.ResourceWithImportState = &CamundaClusterConnectorSecretResource{
 type camundaClusterConnectorSecret struct {
 	ClusterId types.String `tfsdk:"cluster_id"`
 	Name      types.String `tfsdk:"name"`
-	Key       types.String `tfsdk:"key"`
 	Value     types.String `tfsdk:"value"`
 }
 
@@ -47,20 +46,15 @@ func (r *CamundaClusterConnectorSecretResource) Schema(ctx context.Context, req 
 				Required:            true,
 				MarkdownDescription: "Cluster Connector Secret Name",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Validators: []validator.String{
+					validators.StringLengthBetweenValidator{Min: 1, Max: 50},
+					validators.StringNoSpacesValidator{},
+				},
 			},
 			"cluster_id": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Cluster ID",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"key": schema.StringAttribute{
-				MarkdownDescription: "The key of the connector secret",
-				Required:            true,
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				Validators: []validator.String{
-					validators.StringLengthBetweenValidator{Min: 1, Max: 50},
-					validators.StringNoSpacesValidator{},
-				},
 			},
 			"value": schema.StringAttribute{
 				MarkdownDescription: "The value of the connector secret",
@@ -152,10 +146,6 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 	}
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	if data.Name == types.StringValue("") {
-
-	}
 
 	secrets, _, err := r.provider.client.ClustersApi.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
 	if err != nil {
