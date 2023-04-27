@@ -15,8 +15,7 @@ Manage a cluster connector secret on Camunda SaaS.
 ```terraform
 resource "camunda_cluster_connector_secret" "test" {
   cluster_id = camunda_cluster.test.id
-  name       = "test"
-  key        = "key-of-secret"
+  name       = "my-key-of-secret"
   value      = "my-secret-value"
 }
 ```
@@ -27,7 +26,6 @@ resource "camunda_cluster_connector_secret" "test" {
 ### Required
 
 - `cluster_id` (String) Cluster ID
-- `key` (String) The key of the connector secret
 - `name` (String) Cluster Connector Secret Name
 - `value` (String, Sensitive) The value of the connector secret
 
