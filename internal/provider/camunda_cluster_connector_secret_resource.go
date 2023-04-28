@@ -79,7 +79,7 @@ func (r *CamundaClusterConnectorSecretResource) Configure(ctx context.Context, r
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *CamundaCloud client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *CamundaCloudProvider, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
