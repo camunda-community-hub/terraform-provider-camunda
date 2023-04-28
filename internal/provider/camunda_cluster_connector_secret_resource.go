@@ -163,9 +163,7 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 	for key, value := range secrets {
 		if key == data.Name.ValueString() {
 			found = true
-			if value != data.Value.ValueString() {
-				data.Value = types.StringValue(value)
-			}
+			data.Value = types.StringValue(value)
 			break
 		}
 	}
