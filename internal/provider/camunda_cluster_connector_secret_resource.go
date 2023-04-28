@@ -105,7 +105,7 @@ func (r *CamundaClusterConnectorSecretResource) Create(ctx context.Context, req 
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	inline, err := r.provider.client.ClustersApi.
+	response, err := r.provider.client.ClustersApi.
 		CreateSecret(ctx, data.ClusterId.ValueString()).
 		CreateSecretBody(newClusterConnectorSecretConfiguration).
 		Execute()
@@ -119,10 +119,10 @@ func (r *CamundaClusterConnectorSecretResource) Create(ctx context.Context, req 
 		return
 	}
 
-	if inline.StatusCode >= 300 {
+	if response.StatusCode >= 300 {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster connector secret",
-			fmt.Sprintf("Unable to create cluster connector secret, got status: %s", inline.Status))
+			fmt.Sprintf("Unable to create cluster connector secret, got status: %s", response.Status))
 		return
 	}
 
