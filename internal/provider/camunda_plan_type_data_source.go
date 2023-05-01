@@ -10,7 +10,6 @@ import (
 	console "github.com/sijoma/console-customer-api-go"
 )
 
-// Ensure provider defined types fully satisfy framework interfaces
 var _ datasource.DataSource = &CamundaClusterPlanTypeDataSource{}
 
 type clusterPlanTypeDataSourceData struct {
@@ -32,7 +31,6 @@ func (d *CamundaClusterPlanTypeDataSource) Metadata(ctx context.Context, req dat
 
 func (d *CamundaClusterPlanTypeDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "clusterPlanType data source",
 
 		Attributes: map[string]schema.Attribute{
