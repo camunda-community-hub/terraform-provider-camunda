@@ -1,6 +1,13 @@
 resource "camunda_cluster_client" "test" {
   name       = "test-client"
   cluster_id = camunda_cluster.test.id
+
+  scopes = [
+    "Operate",
+    #"Optimize",
+    #"Tasklist",
+    "Zeebe",
+  ]
 }
 
 output "address" {
@@ -18,4 +25,8 @@ output "client_id" {
 output "client_secret" {
   sensitive = true
   value     = camunda_cluster_client.test.secret
+}
+
+output "scopes" {
+  value = camunda_cluster_client.test.scopes
 }
