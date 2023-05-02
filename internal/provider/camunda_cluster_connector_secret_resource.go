@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -147,7 +148,12 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	secrets, _, err := r.provider.client.ClustersApi.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
+	secrets, response, err := r.provider.client.ClustersApi.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
+	if err != nil && response.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Connector Secret Error",
