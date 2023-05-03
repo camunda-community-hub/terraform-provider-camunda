@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -13,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/multani/terraform-provider-camunda/internal/validators"
 	console "github.com/sijoma/console-customer-api-go"
 )
 
@@ -48,8 +49,11 @@ func (r *CamundaClusterConnectorSecretResource) Schema(ctx context.Context, req 
 				MarkdownDescription: "Cluster Connector Secret Name",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
-					validators.StringLengthBetweenValidator{Min: 1, Max: 50},
-					validators.StringNoSpacesValidator{},
+					stringvalidator.LengthBetween(1, 50),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[^ ]+$`),
+						"must not contain space characters",
+					),
 				},
 			},
 			"cluster_id": schema.StringAttribute{
@@ -92,7 +96,7 @@ func (r *CamundaClusterConnectorSecretResource) Configure(ctx context.Context, r
 func (r *CamundaClusterConnectorSecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data camundaClusterConnectorSecret
 
-	diags := req.Config.Get(ctx, &data)
+	diags := req.Plan.Get(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 
 	if resp.Diagnostics.HasError() {

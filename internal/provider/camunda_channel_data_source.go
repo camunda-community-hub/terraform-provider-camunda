@@ -68,55 +68,6 @@ func (d *CamundaChannelDataSource) Schema(ctx context.Context, req datasource.Sc
 	}
 }
 
-// {
-// 	"channels": [
-// 			{
-// 					"allowedGenerations": [
-// 							{
-// 									"name": "Zeebe 8.1.0-alpha1",
-// 									"uuid": "c1f79896-8d0c-41d0-b8c5-0175157d32de"
-// 							}
-// 					],
-// 					"defaultGeneration": {
-// 							"name": "Zeebe 8.1.0-alpha1",
-// 							"uuid": "c1f79896-8d0c-41d0-b8c5-0175157d32de"
-// 					},
-// 					"name": "Alpha",
-// 					"uuid": "c767585c-eccc-4762-be78-3bfcd562ee1e"
-// 			},
-// 			{
-// 					"allowedGenerations": [
-// 							{
-// 									"name": "Zeebe 8.0.2",
-// 									"uuid": "edf8342a-ebeb-44f7-9280-356e9c36a1e2"
-// 							}
-// 					],
-// 					"defaultGeneration": {
-// 							"name": "Zeebe 8.0.2",
-// 							"uuid": "edf8342a-ebeb-44f7-9280-356e9c36a1e2"
-// 					},
-// 					"name": "Stable",
-// 					"uuid": "6bdf0d1c-3d5a-4df6-8d03-762682964d85"
-// 			}
-// 	],
-// 	"clusterPlanTypes": [
-// 			{
-// 					"name": "Trial Package",
-// 					"region": {
-// 							"name": "Europe West",
-// 							"uuid": "2f6470f9-77ec-4be5-9cdc-3231caf683ec"
-// 					},
-// 					"uuid": "231932af-0223-4b60-9961-fe4f71800760"
-// 			}
-// 	],
-// 	"regions": [
-// 			{
-// 					"name": "Europe West",
-// 					"uuid": "2f6470f9-77ec-4be5-9cdc-3231caf683ec"
-// 			}
-// 	]
-// }
-
 func (d *CamundaChannelDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Provider not yet configured
 	if req.ProviderData == nil {
