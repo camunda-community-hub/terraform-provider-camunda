@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -194,7 +195,12 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	cluster, _, err := r.provider.client.ClustersApi.GetCluster(ctx, data.Id.ValueString()).Execute()
+	cluster, response, err := r.provider.client.ClustersApi.GetCluster(ctx, data.Id.ValueString()).Execute()
+	if err != nil && response.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
