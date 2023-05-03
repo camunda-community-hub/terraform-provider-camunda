@@ -56,7 +56,7 @@ output "scopes" {
 
 ### Optional
 
-- `scopes` (Set of String) The list of scopes the client will be valid for. It defaults to all the scopes. Valid values:
+- `scopes` (Set of String) The list of scopes the client will be valid for. It defaults to all the scopes, and at least one scope should be specified. Valid values:
   * `Operate`
   * `Optimize`
   * `Tasklist`
