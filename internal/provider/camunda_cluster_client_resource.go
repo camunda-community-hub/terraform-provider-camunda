@@ -82,7 +82,7 @@ func (r *CamundaClusterClientResource) Schema(ctx context.Context, req resource.
 			},
 			"scopes": schema.SetAttribute{
 				ElementType: types.StringType,
-				MarkdownDescription: ("The list of scopes the client will be valid for. It defaults to all the scopes. Valid values:\n" +
+				MarkdownDescription: ("The list of scopes the client will be valid for. It defaults to all the scopes, and at least one scope should be specified. Valid values:\n" +
 					"  * `Operate`\n" +
 					"  * `Optimize`\n" +
 					"  * `Tasklist`\n" +
@@ -94,6 +94,8 @@ func (r *CamundaClusterClientResource) Schema(ctx context.Context, req resource.
 					setplanmodifier.RequiresReplace(),
 				},
 				Validators: []validator.Set{
+					// At least one valid scope must be specified.
+					setvalidator.SizeAtLeast(1),
 					setvalidator.ValueStringsAre(
 						stringvalidator.OneOf(validScopes...),
 					),
