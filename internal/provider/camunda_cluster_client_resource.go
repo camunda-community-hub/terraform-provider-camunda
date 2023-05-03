@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -18,7 +19,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/multani/terraform-provider-camunda/internal/validators"
 	console "github.com/sijoma/console-customer-api-go"
 )
 
@@ -76,8 +76,11 @@ func (r *CamundaClusterClientResource) Schema(ctx context.Context, req resource.
 				Required:            true,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators: []validator.String{
-					validators.StringLengthBetweenValidator{Min: 1, Max: 50},
-					validators.StringNoSpacesValidator{},
+					stringvalidator.LengthBetween(1, 50),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[^ ]+$`),
+						"must not contain space characters",
+					),
 				},
 			},
 			"scopes": schema.SetAttribute{
