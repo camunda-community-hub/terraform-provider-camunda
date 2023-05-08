@@ -6,11 +6,15 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -21,11 +25,14 @@ import (
 var _ resource.Resource = &CamundaClusterClientResource{}
 var _ resource.ResourceWithImportState = &CamundaClusterClientResource{}
 
+var validScopes = []string{"Operate", "Optimize", "Tasklist", "Zeebe"}
+
 type camundaClusterClientData struct {
-	Id        types.String `tfsdk:"id"`
-	ClusterId types.String `tfsdk:"cluster_id"`
-	Name      types.String `tfsdk:"name"`
-	Secret    types.String `tfsdk:"secret"`
+	Id        types.String   `tfsdk:"id"`
+	ClusterId types.String   `tfsdk:"cluster_id"`
+	Name      types.String   `tfsdk:"name"`
+	Secret    types.String   `tfsdk:"secret"`
+	Scopes    []types.String `tfsdk:"scopes"`
 
 	ZeebeAddress                types.String `tfsdk:"zeebe_address"`
 	ZeebeClientId               types.String `tfsdk:"zeebe_client_id"`
@@ -45,6 +52,11 @@ func (r *CamundaClusterClientResource) Metadata(ctx context.Context, req resourc
 }
 
 func (r *CamundaClusterClientResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	defaultScopes := []attr.Value{}
+	for _, scope := range validScopes {
+		defaultScopes = append(defaultScopes, types.StringValue(scope))
+	}
+
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manage a cluster client on Camunda SaaS.",
 
@@ -70,6 +82,33 @@ func (r *CamundaClusterClientResource) Schema(ctx context.Context, req resource.
 						"must not contain space characters",
 					),
 				},
+			},
+			"scopes": schema.SetAttribute{
+				ElementType: types.StringType,
+				MarkdownDescription: ("The list of scopes the client will be valid for. It defaults to all the scopes, and at least one scope should be specified. Valid values:\n" +
+					"  * `Operate`\n" +
+					"  * `Optimize`\n" +
+					"  * `Tasklist`\n" +
+					"  * `Zeebe`\n"),
+				Computed: true,
+				Optional: true,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+					setplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.Set{
+					// At least one valid scope must be specified.
+					setvalidator.SizeAtLeast(1),
+					setvalidator.ValueStringsAre(
+						stringvalidator.OneOf(validScopes...),
+					),
+				},
+				Default: setdefault.StaticValue(
+					types.SetValueMust(
+						types.StringType,
+						defaultScopes,
+					),
+				),
 			},
 			"secret": schema.StringAttribute{
 				Computed:            true,
@@ -123,8 +162,14 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 		return
 	}
 
+	var scopes []string
+	for _, scope := range data.Scopes {
+		scopes = append(scopes, scope.ValueString())
+	}
+
 	newClusterClientConfiguration := console.CreateClusterClientBody{
-		ClientName: data.Name.ValueString(),
+		ClientName:  data.Name.ValueString(),
+		Permissions: scopes,
 	}
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
@@ -146,6 +191,11 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 	data.Id = types.StringValue(inline.Uuid)
 	data.ZeebeClientId = types.StringValue(inline.ClientId)
 	data.Secret = types.StringValue(inline.ClientSecret)
+
+	data.Scopes = []types.String{}
+	for _, permission := range inline.Permissions {
+		data.Scopes = append(data.Scopes, types.StringValue(permission))
+	}
 
 	clientResp, _, err := r.provider.client.ClustersApi.
 		GetClient(ctx, data.ClusterId.ValueString(), inline.ClientId).
@@ -202,6 +252,7 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 	data.ZeebeClientId = types.StringValue(client.ZEEBE_CLIENT_ID)
 	data.ZeebeAddress = types.StringValue(client.ZEEBE_ADDRESS)
 	data.ZeebeAuthorizationServerUrl = types.StringValue(client.ZEEBE_AUTHORIZATION_SERVER_URL)
+	// TODO: implement reading scopes while reading from the API
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
