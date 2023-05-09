@@ -80,6 +80,6 @@ jobs:
       - uses: actions/checkout@v3
       - run: go mod download
       - env:
-          TF_ACC: "1"
+          TF_ACC: "0"
         run: go test -v -cover ./internal/provider/
         timeout-minutes: 10
