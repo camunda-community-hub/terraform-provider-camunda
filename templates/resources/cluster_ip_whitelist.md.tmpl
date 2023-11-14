@@ -1,0 +1,23 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  {{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This configure a cluster IP whitelist to authorize only the specified IP addresses to connect to the Camunda cluster.
+
+~> **Note** Although you can create multiple instances of this resource for a
+single cluster, they will overwrite each other in a random manner.
+Instead, create a single `{{.Name}}` resource per-cluster, and configures
+multiple `ip_whitelist` blocks inside this `{{.Name}}` resource.
+
+## Example Usage
+
+{{ tffile "examples/resources/camunda_cluster_ip_whitelist/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
