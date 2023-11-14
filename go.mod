@@ -1,4 +1,4 @@
-module github.com/multani/terraform-provider-camunda
+module github.com/camunda-community-hub/terraform-provider-camunda
 
 go 1.19
 

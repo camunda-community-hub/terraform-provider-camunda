@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/multani/terraform-provider-camunda/internal/validators"
+	"github.com/camunda-community-hub/terraform-provider-camunda/internal/validators"
 	console "github.com/sijoma/console-customer-api-go"
 )
 

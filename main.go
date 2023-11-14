@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/multani/terraform-provider-camunda/internal/provider"
+	"github.com/camunda-community-hub/terraform-provider-camunda/internal/provider"
 )
 
 // Run "go generate" to format example terraform files and generate the docs for the registry/website
@@ -37,7 +37,7 @@ func main() {
 
 	opts := providerserver.ServeOpts{
 		// TODO: Update this string with the published name of your provider.
-		Address: "registry.terraform.io/multani/camunda",
+		Address: "registry.terraform.io/camunda-community-hub/camunda",
 		Debug:   debug,
 	}
 
