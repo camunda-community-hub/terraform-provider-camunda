@@ -4,7 +4,7 @@ variable "camunda_client_secret" {}
 terraform {
   required_providers {
     camunda = {
-      source = "multani/camunda"
+      source = "camunda-community-hub/camunda"
     }
   }
 }

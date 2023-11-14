@@ -11,7 +11,7 @@ Further information can be found under https://docs.camunda.io/.
 This Terraform provider allows to manage the resources provided by the Camunda
 Platform 8, such as clusters, clients, etc.
 
-* Documentation: https://registry.terraform.io/providers/multani/camunda/
+* Documentation: https://registry.terraform.io/providers/camunda-community-hub/camunda/
 
 
 ## Development
