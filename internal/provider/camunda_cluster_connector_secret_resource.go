@@ -15,7 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	console "github.com/sijoma/console-customer-api-go"
+	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ resource.Resource = &CamundaClusterConnectorSecretResource{}
@@ -110,7 +110,7 @@ func (r *CamundaClusterConnectorSecretResource) Create(ctx context.Context, req 
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	response, err := r.provider.client.ClustersApi.
+	response, err := r.provider.client.DefaultAPI.
 		CreateSecret(ctx, data.ClusterId.ValueString()).
 		CreateSecretBody(newClusterConnectorSecretConfiguration).
 		Execute()
@@ -152,7 +152,7 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	secrets, response, err := r.provider.client.ClustersApi.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
+	secrets, response, err := r.provider.client.DefaultAPI.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
 	if err != nil && response.StatusCode == http.StatusNotFound {
 		resp.State.RemoveResource(ctx)
 		return
@@ -214,7 +214,7 @@ func (r *CamundaClusterConnectorSecretResource) Delete(ctx context.Context, req 
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	_, err := r.provider.client.ClustersApi.DeleteSecret(ctx, data.ClusterId.ValueString(), data.Name.ValueString()).Execute()
+	_, err := r.provider.client.DefaultAPI.DeleteSecret(ctx, data.ClusterId.ValueString(), data.Name.ValueString()).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Connector Secret Error",

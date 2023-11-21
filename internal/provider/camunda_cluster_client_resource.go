@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	console "github.com/sijoma/console-customer-api-go"
+	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ resource.Resource = &CamundaClusterClientResource{}
@@ -174,7 +174,7 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	inline, _, err := r.provider.client.ClustersApi.
+	inline, _, err := r.provider.client.DefaultAPI.
 		CreateClient(ctx, data.ClusterId.ValueString()).
 		CreateClusterClientBody(newClusterClientConfiguration).
 		Execute()
@@ -197,7 +197,7 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 		data.Scopes = append(data.Scopes, types.StringValue(permission))
 	}
 
-	clientResp, _, err := r.provider.client.ClustersApi.
+	clientResp, _, err := r.provider.client.DefaultAPI.
 		GetClient(ctx, data.ClusterId.ValueString(), inline.ClientId).
 		Execute()
 
@@ -234,7 +234,9 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	client, response, err := r.provider.client.ClustersApi.GetClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).Execute()
+	client, response, err := r.provider.client.DefaultAPI.
+        GetClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
+        Execute()
 	if err != nil && response.StatusCode == http.StatusNotFound {
 		resp.State.RemoveResource(ctx)
 		return
@@ -284,7 +286,9 @@ func (r *CamundaClusterClientResource) Delete(ctx context.Context, req resource.
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	_, err := r.provider.client.ClustersApi.DeleteClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).Execute()
+	_, err := r.provider.client.DefaultAPI.
+        DeleteClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
+        Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
