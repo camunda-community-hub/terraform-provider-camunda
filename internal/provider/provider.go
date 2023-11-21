@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	console "github.com/sijoma/console-customer-api-go"
+	console "github.com/camunda-community-hub/console-customer-api-go"
 	"golang.org/x/oauth2/clientcredentials"
 )
 

@@ -15,7 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/camunda-community-hub/terraform-provider-camunda/internal/validators"
-	console "github.com/sijoma/console-customer-api-go"
+	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ resource.Resource = &CamundaClusterIPWhiteListResource{}
@@ -151,7 +151,7 @@ func (r *CamundaClusterIPWhiteListResource) Read(ctx context.Context, req resour
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	cluster, response, err := r.provider.client.ClustersApi.GetCluster(ctx, data.Id.ValueString()).Execute()
+	cluster, response, err := r.provider.client.DefaultAPI.GetCluster(ctx, data.Id.ValueString()).Execute()
 	if err != nil && response.StatusCode == http.StatusNotFound {
 		resp.State.RemoveResource(ctx)
 		return
@@ -260,7 +260,7 @@ func (r *CamundaClusterIPWhiteListResource) configureIPWhitelisting(ctx context.
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	response, err := r.provider.client.
-		ClustersApi.
+		DefaultAPI.
 		UpdateIpWhitelist(ctx, clusterID).
 		IpWhiteListBody(newIPWhitelistBody).
 		Execute()

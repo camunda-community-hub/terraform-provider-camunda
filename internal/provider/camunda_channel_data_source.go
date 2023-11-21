@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	console "github.com/sijoma/console-customer-api-go"
+	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
@@ -99,7 +99,7 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 	}
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, d.provider.accessToken)
-	params, _, err := d.provider.client.ClustersApi.GetParameters(ctx).Execute()
+	params, _, err := d.provider.client.DefaultAPI.GetParameters(ctx).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",

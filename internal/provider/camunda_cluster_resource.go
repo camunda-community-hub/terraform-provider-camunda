@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
-	console "github.com/sijoma/console-customer-api-go"
+	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ resource.Resource = &CamundaClusterResource{}
@@ -117,7 +117,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	inline, _, err := r.provider.client.ClustersApi.CreateCluster(ctx).
+	inline, _, err := r.provider.client.DefaultAPI.CreateCluster(ctx).
 		CreateClusterBody(newClusterConfiguration).
 		Execute()
 
@@ -143,20 +143,20 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	createState := &retry.StateChangeConf{
 		// The cluster states that we need to keep waiting on
 		Pending: []string{
-			string(console.CREATING),
-			string(console.UPDATING),
+			string(console.CLUSTERCOMPONENTSTATUS_CREATING),
+			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
 		},
 
 		// The cluster states that we would like to reach
 		Target: []string{
-			string(console.HEALTHY),
+			string(console.CLUSTERCOMPONENTSTATUS_HEALTHY),
 		},
 
 		// How many times the target state has to be reached to continue.
 		ContinuousTargetOccurence: 2,
 
 		Refresh: func() (interface{}, string, error) {
-			cluster, _, err := r.provider.client.ClustersApi.
+			cluster, _, err := r.provider.client.DefaultAPI.
 				GetCluster(ctx, clusterId).
 				Execute()
 
@@ -164,7 +164,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 				return nil, "", err
 			}
 
-			return cluster, string(cluster.Status.Ready), nil
+			return cluster, string(console.CLUSTERCOMPONENTSTATUS_HEALTHY), nil
 		},
 
 		Timeout:    30 * time.Minute,
@@ -195,7 +195,7 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	cluster, response, err := r.provider.client.ClustersApi.GetCluster(ctx, data.Id.ValueString()).Execute()
+	cluster, response, err := r.provider.client.DefaultAPI.GetCluster(ctx, data.Id.ValueString()).Execute()
 	if err != nil && response.StatusCode == http.StatusNotFound {
 		resp.State.RemoveResource(ctx)
 		return
@@ -245,7 +245,7 @@ func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.Delete
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	_, err := r.provider.client.ClustersApi.DeleteCluster(ctx, data.Id.ValueString()).Execute()
+	_, err := r.provider.client.DefaultAPI.DeleteCluster(ctx, data.Id.ValueString()).Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
