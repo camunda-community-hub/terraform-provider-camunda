@@ -28,5 +28,3 @@ resource "camunda_cluster_connector_secret" "test" {
 - `cluster_id` (String) Cluster ID
 - `name` (String) Cluster Connector Secret Name
 - `value` (String, Sensitive) The value of the connector secret
-
-
