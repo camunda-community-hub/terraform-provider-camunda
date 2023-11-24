@@ -20,4 +20,6 @@ resource "camunda_cluster" "test" {
   generation = data.camunda_channel.alpha.default_generation_id
   region     = data.camunda_region.europe.id
   plan_type  = data.camunda_cluster_plan_type.trial.id
+
+  auto_update = true
 }
