@@ -164,7 +164,12 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 				return nil, "", err
 			}
 
-			return cluster, string(console.CLUSTERCOMPONENTSTATUS_HEALTHY), nil
+			tflog.Info(ctx, "Camunda cluster status", map[string]interface{}{
+				"clusterID":     cluster.Uuid,
+				"clusterStatus": cluster.Status.Ready,
+			})
+
+			return cluster, string(cluster.Status.Ready), nil
 		},
 
 		Timeout:    30 * time.Minute,
