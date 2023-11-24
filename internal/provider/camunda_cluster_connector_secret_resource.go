@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 
+	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ resource.Resource = &CamundaClusterConnectorSecretResource{}

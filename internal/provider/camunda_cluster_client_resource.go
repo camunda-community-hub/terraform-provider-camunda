@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 
+	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -19,7 +20,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ resource.Resource = &CamundaClusterClientResource{}
@@ -235,8 +235,8 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	client, response, err := r.provider.client.DefaultAPI.
-        GetClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
-        Execute()
+		GetClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
+		Execute()
 	if err != nil && response.StatusCode == http.StatusNotFound {
 		resp.State.RemoveResource(ctx)
 		return
@@ -287,8 +287,8 @@ func (r *CamundaClusterClientResource) Delete(ctx context.Context, req resource.
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	_, err := r.provider.client.DefaultAPI.
-        DeleteClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
-        Execute()
+		DeleteClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
+		Execute()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",

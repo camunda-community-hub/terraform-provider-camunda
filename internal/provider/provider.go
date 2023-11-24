@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net/url"
 
+	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"golang.org/x/oauth2/clientcredentials"
 )
 

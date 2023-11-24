@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ datasource.DataSource = &CamundaRegionDataSource{}

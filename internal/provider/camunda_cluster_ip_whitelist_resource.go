@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	console "github.com/camunda-community-hub/console-customer-api-go"
+	"github.com/camunda-community-hub/terraform-provider-camunda/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -14,8 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/camunda-community-hub/terraform-provider-camunda/internal/validators"
-	console "github.com/camunda-community-hub/console-customer-api-go"
 )
 
 var _ resource.Resource = &CamundaClusterIPWhiteListResource{}
