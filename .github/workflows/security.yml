@@ -1,0 +1,43 @@
+name: Scan with Trivy
+
+on:
+  pull_request:
+    branches:
+      - "**"
+
+  schedule:
+    # Run once every morning
+    - cron: "36 7 * * *"
+
+jobs:
+  trivy:
+    name: Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        scan-type:
+          - fs
+          - config
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@0.16.1
+        with:
+          scan-ref: .
+          scan-type: ${{ matrix.scan-type }}
+          output: trivy-report.sarif.json
+          format: sarif
+          ignore-unfixed: true
+          hide-progress: false
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-report.sarif.json
