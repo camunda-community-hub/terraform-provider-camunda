@@ -28,7 +28,7 @@ This Terraform provider is built with the [Terraform Plugin Framework](https://g
 go install
 ```
 
-## Developing the Provider
+### Developing the Provider
 
 - To compile the provider, run `go install`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
 
@@ -41,3 +41,13 @@ go install
 ```shell
 make testacc
 ```
+
+### Release the Provider
+
+- Create a new git tag named `vX.Y.Z` with: `git tag -s -m "vX.Y.Z" vX.Y.Z`
+- Push the tag to GitHub with: `git push origin vX.Y.Z`
+
+Then:
+
+- GitHub Actions should build all the artifacts and create the release.
+- Terraform Cloud Registry should automatically detect the new release and publish it.
