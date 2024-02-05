@@ -145,10 +145,11 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 
 func (p *CamundaCloudProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewCamundaClusterResource,
-		NewCamundaClusterIPWhitelistResource,
 		NewCamundaClusterClientResource,
 		NewCamundaClusterConnectorSecretResource,
+		NewCamundaClusterIPWhitelistResource,
+		NewCamundaClusterResource,
+		NewCamundaOrganizationMemberResource,
 	}
 }
 
