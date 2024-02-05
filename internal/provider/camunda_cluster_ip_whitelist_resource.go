@@ -245,9 +245,9 @@ func (r *CamundaClusterIPWhiteListResource) ImportState(ctx context.Context, req
 }
 
 func (r *CamundaClusterIPWhiteListResource) configureIPWhitelisting(ctx context.Context, data camundaClusterIPWhitelistData, clusterID string) error {
-	ipWhitelist := []console.ClusterIpwhitelistInner{}
+	ipWhitelist := []console.ClusterIpallowlistInner{}
 	for _, item := range data.IPWhitelist {
-		ipWhitelist = append(ipWhitelist, *console.NewClusterIpwhitelistInner(
+		ipWhitelist = append(ipWhitelist, *console.NewClusterIpallowlistInner(
 			item.Description.ValueString(),
 			item.IP.ValueString(),
 		))
