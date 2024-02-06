@@ -1,22 +1,8 @@
-variable "camunda_client_id" {
-  default = "KGNwvEgmGEWskRON"
-}
-
-variable "camunda_client_secret" {
-  default = "zrIsrYWp.HgYOg2eAgIuI~2_AtkmQqFr"
-}
-
-variable "camunda_api_url" {
-  default = "https://api.cloud.camunda.io"
-}
-
-variable "camunda_audience" {
-  default = "api.cloud.camunda.io"
-}
-
-variable "camunda_token_url" {
-  default = "https://login.cloud.camunda.io/oauth/token"
-}
+variable "camunda_client_id" {}
+variable "camunda_client_secret" {}
+variable "camunda_api_url" {}
+variable "camunda_audience" {}
+variable "camunda_token_url" {}
 
 terraform {
   required_providers {
