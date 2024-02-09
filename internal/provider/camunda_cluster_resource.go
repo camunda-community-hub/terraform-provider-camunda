@@ -124,7 +124,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster",
-			fmt.Sprintf("Unable to create cluster, got error: %s", err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to create cluster, got error: %s", formatClientError(err)),
 		)
 		return
 	}
@@ -209,7 +209,7 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
 		)
 		return
 	}
@@ -254,7 +254,7 @@ func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.Delete
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
 		)
 		return
 	}

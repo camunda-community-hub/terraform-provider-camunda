@@ -105,7 +105,7 @@ func (r *CamundaOrganizationMemberResource) Create(ctx context.Context, req reso
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to add organization member",
-			fmt.Sprintf("Unable to add organization member, got error: %s", err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to add organization member, got error: %s", formatClientError(err)),
 		)
 		return
 	}
@@ -135,7 +135,7 @@ func (r *CamundaOrganizationMemberResource) Read(ctx context.Context, req resour
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to get organization members, got error: %s", err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to get organization members, got error: %s", formatClientError(err)),
 		)
 		return
 	}
@@ -183,7 +183,7 @@ func (r *CamundaOrganizationMemberResource) Update(ctx context.Context, req reso
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to update organization member",
-			fmt.Sprintf("Unable to update organization member, got error: %s", err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to update organization member, got error: %s", formatClientError(err)),
 		)
 		return
 	}
@@ -209,7 +209,7 @@ func (r *CamundaOrganizationMemberResource) Delete(ctx context.Context, req reso
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete member '%s', got error: %s", email, err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to delete member '%s', got error: %s", email, formatClientError(err)),
 		)
 		return
 	}

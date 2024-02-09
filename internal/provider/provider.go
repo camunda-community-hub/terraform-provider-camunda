@@ -125,7 +125,7 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unexpected Provider Error",
-			fmt.Sprintf("Unable to get token: %v", err),
+			fmt.Sprintf("Unable to get token: %s", formatClientError(err)),
 		)
 		return
 	}
