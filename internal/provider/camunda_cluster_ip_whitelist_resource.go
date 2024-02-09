@@ -160,7 +160,7 @@ func (r *CamundaClusterIPWhiteListResource) Read(ctx context.Context, req resour
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
 		)
 		return
 	}
@@ -234,7 +234,7 @@ func (r *CamundaClusterIPWhiteListResource) Delete(ctx context.Context, req reso
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to remove IP whitelisting from cluster ID=%s, got error: %s", data.Id.ValueString(), err.(console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to remove IP whitelisting from cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
 		)
 		return
 	}
@@ -266,7 +266,7 @@ func (r *CamundaClusterIPWhiteListResource) configureIPWhitelisting(ctx context.
 		Execute()
 
 	if err != nil {
-		return fmt.Errorf("Unable to create cluster, got error: %s", err.(*console.GenericOpenAPIError).Body())
+		return fmt.Errorf("Unable to create cluster, got error: %s", formatClientError(err))
 	}
 
 	if response.StatusCode != 204 {
