@@ -1,6 +1,6 @@
 module github.com/camunda-community-hub/terraform-provider-camunda
 
-go 1.19
+go 1.21
 
 require (
 	github.com/camunda-community-hub/console-customer-api-go v0.6.0
