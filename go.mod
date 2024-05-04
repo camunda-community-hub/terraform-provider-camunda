@@ -3,7 +3,7 @@ module github.com/camunda-community-hub/terraform-provider-camunda
 go 1.21
 
 require (
-	github.com/camunda-community-hub/console-customer-api-go v0.6.0
+	github.com/camunda-community-hub/console-customer-api-go v0.6.1
 	github.com/hashicorp/terraform-plugin-docs v0.19.2
 	github.com/hashicorp/terraform-plugin-framework v1.8.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.12.0
