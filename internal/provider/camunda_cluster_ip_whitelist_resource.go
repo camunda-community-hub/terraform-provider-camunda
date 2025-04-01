@@ -266,11 +266,11 @@ func (r *CamundaClusterIPWhiteListResource) configureIPWhitelisting(ctx context.
 		Execute()
 
 	if err != nil {
-		return fmt.Errorf("Unable to create cluster, got error: %s", formatClientError(err))
+		return fmt.Errorf("unable to create cluster, got error: %s", formatClientError(err))
 	}
 
 	if response.StatusCode != 204 {
-		return fmt.Errorf("Error while configuring IP whitelisting, expected HTTP 200, got: %d", response.StatusCode)
+		return fmt.Errorf("error while configuring IP whitelisting, expected HTTP 200, got: %d", response.StatusCode)
 	}
 
 	tflog.Info(ctx, "IP Whitelisting configured", map[string]interface{}{
