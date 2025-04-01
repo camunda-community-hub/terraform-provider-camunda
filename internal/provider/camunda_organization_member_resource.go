@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
-	openapi "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -55,12 +54,12 @@ func (r *CamundaOrganizationMemberResource) Schema(ctx context.Context, req reso
 				Validators: []validator.Set{
 					setvalidator.ValueStringsAre(
 						stringvalidator.OneOf([]string{
-							string(openapi.ORGANIZATIONROLEADMIN_ADMIN),
-							string(openapi.ORGANIZATIONROLEOPERATIONSENGINEER_OPERATIONSENGINEER),
-							string(openapi.ORGANIZATIONROLETASKUSER_TASKUSER),
-							string(openapi.ORGANIZATIONROLEANALYST_ANALYST),
-							string(openapi.ORGANIZATIONROLEDEVELOPER_DEVELOPER),
-							string(openapi.ORGANIZATIONROLEVISITOR_VISITOR),
+							string(console.ORGANIZATIONROLEADMIN_ADMIN),
+							string(console.ORGANIZATIONROLEOPERATIONSENGINEER_OPERATIONSENGINEER),
+							string(console.ORGANIZATIONROLETASKUSER_TASKUSER),
+							string(console.ORGANIZATIONROLEANALYST_ANALYST),
+							string(console.ORGANIZATIONROLEDEVELOPER_DEVELOPER),
+							string(console.ORGANIZATIONROLEVISITOR_VISITOR),
 						}...),
 					),
 				},
@@ -220,17 +219,17 @@ func (r *CamundaOrganizationMemberResource) ImportState(ctx context.Context, req
 }
 
 
-func setMember(ctx context.Context, client openapi.APIClient, email types.String, roles types.Set) error {
-	orgRoles := make([]openapi.AssignableOrganizationRoleType, 0)
+func setMember(ctx context.Context, client console.APIClient, email types.String, roles types.Set) error {
+	orgRoles := make([]console.AssignableOrganizationRoleType, 0)
 
 	for _, r := range roles.Elements() {
-		var role openapi.AssignableOrganizationRoleType
+		var role console.AssignableOrganizationRoleType
 
 		roleName := r.String()
 		err := role.UnmarshalJSON([]byte(roleName))
 
 		if err != nil {
-			return fmt.Errorf("Unable to read role: %w", err)
+			return fmt.Errorf("unable to read role: %w", err)
 		}
 
 		orgRoles = append(orgRoles, role)
@@ -245,7 +244,7 @@ func setMember(ctx context.Context, client openapi.APIClient, email types.String
 		Execute()
 
 	if err != nil {
-		return fmt.Errorf("Error while calling the update member API: %w", err)
+		return fmt.Errorf("error while calling the update member API: %w", err)
 	}
 
 	return nil
