@@ -5,7 +5,7 @@ go 1.23.7
 toolchain go1.24.6
 
 require (
-	github.com/camunda-community-hub/console-customer-api-go v0.7.0
+	github.com/camunda-community-hub/console-customer-api-go v0.8.0
 	github.com/hashicorp/terraform-plugin-docs v0.22.0
 	github.com/hashicorp/terraform-plugin-framework v1.15.1
 	github.com/hashicorp/terraform-plugin-framework-validators v0.18.0
