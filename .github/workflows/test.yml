@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - uses: actions/checkout@v4
       - run: go mod download
       - run: go build -v .
@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - uses: actions/checkout@v4
       - run: go mod download
       - name: golangci-lint
@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ matrix.terraform }}
