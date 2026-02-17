@@ -107,7 +107,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	newClusterConfiguration := console.CreateClusterBody{
+	newClusterConfiguration := console.CreateClusterRequest{
 		Name:         data.Name.ValueString(),
 		PlanTypeId:   data.PlanType.ValueString(),
 		ChannelId:    data.Channel.ValueString(),
@@ -118,7 +118,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	inline, _, err := r.provider.client.DefaultAPI.CreateCluster(ctx).
-		CreateClusterBody(newClusterConfiguration).
+		CreateClusterRequest(newClusterConfiguration).
 		Execute()
 
 	if err != nil {

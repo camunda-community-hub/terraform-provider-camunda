@@ -26,6 +26,8 @@ github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/
 github.com/bufbuild/protocompile v0.14.1/go.mod h1:ppVdAIhbr2H8asPk6k4pY7t9zB1OU5DoEw9xY/FUi1c=
 github.com/camunda-community-hub/console-customer-api-go v0.8.0 h1:i8IofkGCuMTPptXrL3gK/mqYBNl8ZMgUWqxUeWUzCd4=
 github.com/camunda-community-hub/console-customer-api-go v0.8.0/go.mod h1:bKzm7Y7iUZWAiMuIaNsm1OTKdWX/ncNWEwI3RdEGMBM=
+github.com/camunda-community-hub/console-customer-api-go v0.9.0 h1:ESoxSHBV13izz+5ApqWgJpa0QUWMHjhKlUvOD2P27XI=
+github.com/camunda-community-hub/console-customer-api-go v0.9.0/go.mod h1:duDBiXSH8fVoLctINb2PFypBjCSJZugKRXS61g4Cgjs=
 github.com/cloudflare/circl v1.6.1 h1:zqIqSPIndyBh1bjLVVDHMPpVKqp8Su/V+6MeDzzQBQ0=
 github.com/cloudflare/circl v1.6.1/go.mod h1:uddAzsPgqdMAYatqJ0lsjX1oECcQLIlRpzZh3pJrofs=
 github.com/cyphar/filepath-securejoin v0.4.1 h1:JyxxyPEaktOD+GAnqIqTf9A8tHyAG22rowi7HkoSU1s=
