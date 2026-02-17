@@ -19,9 +19,9 @@ multiple `ip_whitelist` blocks inside this `camunda_cluster_ip_whitelist` resour
 ## Example Usage
 
 ```terraform
-variable "camunda_cluster_plan_type" {
+variable "camunda_cluster_type" {
   description = "The Camunda SaaS cluster plan type to use"
-  default     = "Trial"
+  default     = "Trial Cluster"
   type        = string
 }
 
@@ -35,8 +35,8 @@ data "camunda_channel" "this" {
   name = "Stable"
 }
 
-data "camunda_cluster_plan_type" "this" {
-  name = var.camunda_cluster_plan_type
+data "camunda_cluster_type" "this" {
+  name = var.camunda_cluster_type
 }
 
 data "camunda_region" "this" {
@@ -49,7 +49,7 @@ resource "camunda_cluster" "test" {
   channel    = data.camunda_channel.this.id
   generation = data.camunda_channel.this.default_generation_id
   region     = data.camunda_region.this.id
-  plan_type  = data.camunda_cluster_plan_type.this.id
+  plan_type  = data.camunda_cluster_type.this.id
 }
 
 resource "camunda_cluster_ip_whitelist" "test" {

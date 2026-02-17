@@ -1,6 +1,6 @@
 variable "camunda_cluster_plan_type" {
   description = "The Camunda SaaS cluster plan type to use"
-  default     = "Trial"
+  default     = "Trial Cluster"
   type        = string
 }
 

@@ -1,7 +1,11 @@
-data "camunda_cluster_plan_type" "trial_package" {
-  name = "Trial Package"
+data "camunda_cluster_plan_type" "basic" {
+  name = "Basic"
+}
+
+data "camunda_cluster_plan_type" "trial" {
+  name = "Trial Cluster"
 }
 
 output "plan_type" {
-  value = data.camunda_cluster_plan_type.trial_package
+  value = data.camunda_cluster_plan_type.basic
 }
