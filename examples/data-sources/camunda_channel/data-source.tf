@@ -9,3 +9,7 @@ data "camunda_channel" "stable" {
 output "data" {
   value = data.camunda_channel.stable
 }
+
+output "generation" {
+  value = data.camunda_channel.stable.allowed_generations
+}

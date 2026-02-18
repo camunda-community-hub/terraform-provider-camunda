@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -23,6 +24,7 @@ type channelDataSourceData struct {
 	Name                  types.String `tfsdk:"name"`
 	DefaultGenerationName types.String `tfsdk:"default_generation_name"`
 	DefaultGenerationId   types.String `tfsdk:"default_generation_id"`
+	AllowedGenerations    types.List   `tfsdk:"allowed_generations"`
 
 	// https://github.com/hashicorp/terraform-plugin-framework/issues/191
 	// DefaultGeneration generation   `tfsdk:"default_generation"`
@@ -64,6 +66,22 @@ func (d *CamundaChannelDataSource) Schema(ctx context.Context, req datasource.Sc
 				MarkdownDescription: "The name of the default generation for this channel",
 				Computed:            true,
 			},
+			"allowed_generations": schema.ListNestedAttribute{
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							MarkdownDescription: "The ID of the generation",
+							Computed:            true,
+						},
+						"name": schema.StringAttribute{
+							MarkdownDescription: "The name of the generation",
+							Computed:            true,
+						},
+					},
+				},
+				MarkdownDescription: "The allowed generations for this channel",
+				Computed:            true,
+			},
 		},
 	}
 }
@@ -88,6 +106,11 @@ func (d *CamundaChannelDataSource) Configure(ctx context.Context, req datasource
 	d.provider = provider
 }
 
+type Generation struct {
+	Id   string `tfsdk:"id"`
+	Name string `tfsdk:"name"`
+}
+
 func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data channelDataSourceData
 
@@ -110,10 +133,28 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 
 	for _, channel := range params.Channels {
 		if channel.Name == data.Name.ValueString() {
+
 			data.Id = types.StringValue(channel.Uuid)
 			data.Name = types.StringValue(channel.Name)
 			data.DefaultGenerationId = types.StringValue(channel.DefaultGeneration.Uuid)
 			data.DefaultGenerationName = types.StringValue(channel.DefaultGeneration.Name)
+
+			var allowedGenerations []Generation
+			for _, generation := range channel.AllowedGenerations {
+				allowedGenerations = append(allowedGenerations, Generation{
+					Id:   generation.Uuid,
+					Name: generation.Name,
+				})
+			}
+
+			allowedGenerationsTF, diags := types.ListValueFrom(ctx, types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"id":   types.StringType,
+					"name": types.StringType,
+				},
+			}, allowedGenerations)
+			resp.Diagnostics.Append(diags...)
+			data.AllowedGenerations = allowedGenerationsTF
 
 			diags = resp.State.Set(ctx, &data)
 			resp.Diagnostics.Append(diags...)
