@@ -18,7 +18,7 @@ To connect a client to the cluster, use the `camunda_cluster_client` resource.
 ```terraform
 variable "camunda_cluster_plan_type" {
   description = "The Camunda SaaS cluster plan type to use"
-  default     = "Trial"
+  default     = "Trial Cluster"
   type        = string
 }
 
