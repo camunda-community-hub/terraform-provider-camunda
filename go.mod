@@ -1,6 +1,6 @@
 module github.com/camunda-community-hub/terraform-provider-camunda
 
-go 1.24.0
+go 1.25.0
 
 toolchain go1.26.1
 
@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-log v0.10.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.39.0
-	golang.org/x/oauth2 v0.35.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
