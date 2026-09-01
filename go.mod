@@ -2,7 +2,7 @@ module github.com/camunda-community-hub/terraform-provider-camunda
 
 go 1.25.8
 
-toolchain go1.27.0
+toolchain go1.27.1
 
 require (
 	github.com/camunda-community-hub/console-customer-api-go v0.10.0
