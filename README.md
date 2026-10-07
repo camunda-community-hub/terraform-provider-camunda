@@ -44,10 +44,12 @@ make testacc
 
 ### Release the Provider
 
-- Create a new git tag named `vX.Y.Z` with: `git tag -s -m "vX.Y.Z" vX.Y.Z`
-- Push the tag to GitHub with: `git push origin vX.Y.Z`
+Run the **Release Bump** workflow (Actions tab, on `main`) and pick `patch`, `minor` or `major`.
 
-Then:
+It computes the next `vX.Y.Z` from the latest tag, tags `main`, then runs the **Release** workflow:
 
-- GitHub Actions should build all the artifacts and create the release.
-- Terraform Cloud Registry should automatically detect the new release and publish it.
+- Build, unit tests and lint must pass.
+- GoReleaser builds and signs the artifacts and creates the GitHub release, with notes generated from conventional commits.
+- Terraform Registry detects the new release and publishes it.
+
+Manual alternative: `git tag -s -m "vX.Y.Z" vX.Y.Z && git push origin vX.Y.Z` also triggers the Release workflow.

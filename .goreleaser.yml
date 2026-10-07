@@ -61,4 +61,22 @@ release:
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true
 changelog:
-  disable: true
+  sort: asc
+  use: github
+  groups:
+    - title: Dependencies
+      regexp: '^.*?(fix|chore)\(deps\)!?:.+$'
+      order: 2
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - '^docs?(\(.+\))?:'
+      - '^test(\(.+\))?:'
+      - '^chore\(deps\): update go toolchain'

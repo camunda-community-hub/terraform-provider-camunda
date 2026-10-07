@@ -1,3 +1,4 @@
-## 0.1.0 (Unreleased)
+# Changelog
 
-FEATURES:
+Release notes are generated from conventional commits for each release and published on the
+[GitHub releases page](https://github.com/camunda/terraform-provider-camunda/releases).

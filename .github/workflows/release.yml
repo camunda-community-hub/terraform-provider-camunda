@@ -2,11 +2,17 @@
 name: Release
 
 # This GitHub action creates a release when a tag that matches the pattern
-# "v*" (e.g. v0.1.0) is created.
+# "v*" (e.g. v0.1.0) is pushed, or when called by the "Release Bump" workflow.
 on:
   push:
     tags:
       - 'v*'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Existing tag to release (e.g. v0.1.0)'
+        required: true
+        type: string
 
 # Releases need permissions to read and write the repository contents.
 # GitHub considers creating releases and uploading assets as writing contents.
@@ -14,11 +20,34 @@ permissions:
   contents: write
 
 jobs:
+  # Gate the release on build, unit tests and lint of the tagged commit.
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go mod download
+      - run: go build -v .
+      - env:
+          TF_ACC: "0"
+        run: go test -v ./internal/provider/
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+
   goreleaser:
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.tag || github.ref }}
           # Allow goreleaser to access older tag information.
           fetch-depth: 0
       - uses: actions/setup-go@v6
