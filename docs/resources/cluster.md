@@ -66,6 +66,8 @@ resource "camunda_cluster" "test" {
 ### Optional
 
 - `auto_update` (Boolean) Auto Update
+- `description` (String) Description of the cluster (max 150 characters)
+- `prevent_destroy` (Boolean) The management API cannot change `plan_type`, `generation` or `auto_update` of an existing cluster in place. If `true` (default), changing one of them fails the plan. If `false`, the cluster is destroyed and recreated instead, which **deletes all data of the cluster**.
 
 ### Read-Only
 
