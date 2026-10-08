@@ -28,3 +28,14 @@ resource "camunda_cluster_connector_secret" "test" {
 - `cluster_id` (String) Cluster ID
 - `name` (String) Cluster Connector Secret Name
 - `value` (String, Sensitive) The value of the connector secret
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# Connector secrets are imported by "<cluster_id>/<secret_name>".
+terraform import camunda_cluster_connector_secret.example <cluster_id>/<secret_name>
+```
