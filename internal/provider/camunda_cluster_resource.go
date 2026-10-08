@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -27,6 +28,7 @@ type camundaClusterData struct {
 	Region     types.String `tfsdk:"region"`
 	PlanType   types.String `tfsdk:"plan_type"`
 	Generation types.String `tfsdk:"generation"`
+	AutoUpdate types.Bool   `tfsdk:"auto_update"`
 }
 
 type CamundaClusterResource struct {
@@ -73,6 +75,12 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 				MarkdownDescription: "Generation",
 				Required:            true,
 			},
+			"auto_update": schema.BoolAttribute{
+				MarkdownDescription: "Auto Update",
+				Optional:            true,
+				Default:             booldefault.StaticBool(true),
+				Computed:            true,
+			},
 		},
 	}
 }
@@ -113,6 +121,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		ChannelId:    data.Channel.ValueString(),
 		GenerationId: data.Generation.ValueString(),
 		RegionId:     data.Region.ValueString(),
+		AutoUpdate:   data.AutoUpdate.ValueBoolPointer(),
 	}
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
@@ -219,6 +228,7 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 	data.Region = types.StringValue(cluster.Region.Uuid)
 	data.PlanType = types.StringValue(cluster.PlanType.Uuid)
 	data.Generation = types.StringValue(cluster.Generation.Uuid)
+	data.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
