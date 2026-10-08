@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -20,7 +21,6 @@ import (
 )
 
 var _ resource.Resource = &CamundaClusterResource{}
-var _ resource.ResourceWithModifyPlan = &CamundaClusterResource{}
 var _ resource.ResourceWithImportState = &CamundaClusterResource{}
 
 type camundaClusterData struct {
@@ -32,8 +32,7 @@ type camundaClusterData struct {
 	Generation types.String `tfsdk:"generation"`
 	AutoUpdate types.Bool   `tfsdk:"auto_update"`
 
-	Description    types.String `tfsdk:"description"`
-	PreventDestroy types.Bool   `tfsdk:"prevent_destroy"`
+	Description types.String `tfsdk:"description"`
 }
 
 type CamundaClusterResource struct {
@@ -50,7 +49,10 @@ func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.Meta
 
 func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manage a cluster on Camunda SaaS",
+		MarkdownDescription: "Manage a cluster on Camunda SaaS.\n\n" +
+			"Only `name` and `description` can be updated in place. Changing `plan_type`, `generation`, " +
+			"`auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. " +
+			"Use `lifecycle { prevent_destroy = true }` to guard against this.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -73,31 +75,26 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"plan_type": schema.StringAttribute{
-				MarkdownDescription: "Plan type",
+				MarkdownDescription: "Plan type. Changing it replaces the cluster.",
 				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"generation": schema.StringAttribute{
-				MarkdownDescription: "Generation",
+				MarkdownDescription: "Generation. Changing it replaces the cluster.",
 				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"auto_update": schema.BoolAttribute{
-				MarkdownDescription: "Auto Update",
+				MarkdownDescription: "Auto Update. Changing it replaces the cluster.",
 				Optional:            true,
 				Default:             booldefault.StaticBool(true),
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.RequiresReplace()},
 			},
 			"description": schema.StringAttribute{
 				MarkdownDescription: "Description of the cluster (max 150 characters)",
 				Optional:            true,
 				Validators:          []validator.String{stringvalidator.LengthAtMost(150)},
-			},
-			"prevent_destroy": schema.BoolAttribute{
-				MarkdownDescription: "The management API cannot change `plan_type`, `generation` or `auto_update` of an " +
-					"existing cluster in place. If `true` (default), changing one of them fails the plan. If `false`, " +
-					"the cluster is destroyed and recreated instead, which **deletes all data of the cluster**.",
-				Optional: true,
-				Default:  booldefault.StaticBool(true),
-				Computed: true,
 			},
 		},
 	}
@@ -268,17 +265,8 @@ func (r *CamundaClusterResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	// The management API only allows changing name and description in place. Refuse changes
-	// to anything else instead of silently recording them in the state. With prevent_destroy
-	// disabled, ModifyPlan replaces the cluster, so this is only reached as a safeguard.
-	if len(unsupportedChanges(plan, state)) > 0 {
-		resp.Diagnostics.AddError(
-			"Unsupported cluster update",
-			"Only the name and description of a cluster can be updated in place; changing plan_type, generation or auto_update is not supported.",
-		)
-		return
-	}
-
+	// plan_type, generation and auto_update cannot be updated in place and force replacement,
+	// so only name and description can differ here.
 	if !plan.Name.Equal(state.Name) || !plan.Description.Equal(state.Description) {
 		ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
@@ -301,61 +289,6 @@ func (r *CamundaClusterResource) Update(ctx context.Context, req resource.Update
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-}
-
-// unsupportedChanges returns the attributes that differ between plan and state but cannot be
-// updated in place through the management API.
-func unsupportedChanges(plan, state camundaClusterData) []path.Path {
-	var changed []path.Path
-	if !plan.PlanType.Equal(state.PlanType) {
-		changed = append(changed, path.Root("plan_type"))
-	}
-	if !plan.Generation.Equal(state.Generation) {
-		changed = append(changed, path.Root("generation"))
-	}
-	if !plan.AutoUpdate.Equal(state.AutoUpdate) {
-		changed = append(changed, path.Root("auto_update"))
-	}
-	return changed
-}
-
-// ModifyPlan fails the plan, or requires replacement if prevent_destroy is false, when an attribute
-// that the management API cannot update in place changes.
-func (r *CamundaClusterResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var plan, state camundaClusterData
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Values that are not known yet cannot be compared reliably.
-	if plan.PlanType.IsUnknown() || plan.Generation.IsUnknown() || plan.AutoUpdate.IsUnknown() || plan.PreventDestroy.IsUnknown() {
-		return
-	}
-
-	changed := unsupportedChanges(plan, state)
-	if len(changed) == 0 {
-		return
-	}
-
-	if !plan.PreventDestroy.ValueBool() {
-		resp.RequiresReplace = append(resp.RequiresReplace, changed...)
-		return
-	}
-
-	for _, p := range changed {
-		resp.Diagnostics.AddAttributeError(
-			p,
-			"Cluster cannot be updated in place",
-			fmt.Sprintf("The management API cannot change %s of an existing cluster. Set prevent_destroy = false "+
-				"to destroy and recreate the cluster instead, which deletes all data of the cluster.", p),
-		)
-	}
 }
 
 func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
