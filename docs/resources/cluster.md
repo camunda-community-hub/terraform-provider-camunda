@@ -2,12 +2,12 @@
 page_title: "camunda_cluster Resource - terraform-provider-camunda"
 subcategory: ""
 description: |-
-    Manage a cluster on Camunda SaaS
+    Manage a cluster on Camunda SaaS. Only name and description can be updated in place. Changing plan_type, generation, auto_update, channel or region destroys and recreates the cluster, deleting all data of the cluster. Use lifecycle { prevent_destroy = true } to guard against this.
 ---
 
 # camunda_cluster (Resource)
 
-Manage a cluster on Camunda SaaS
+Manage a cluster on Camunda SaaS. Only `name` and `description` can be updated in place. Changing `plan_type`, `generation`, `auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. Use `lifecycle { prevent_destroy = true }` to guard against this.
 
 This creates a new Camunda cluster to which a new workflow can be deployed.
 
@@ -58,14 +58,15 @@ resource "camunda_cluster" "test" {
 ### Required
 
 - `channel` (String) Channel
-- `generation` (String) Generation
+- `generation` (String) Generation. Changing it replaces the cluster.
 - `name` (String) The name of the cluster
-- `plan_type` (String) Plan type
+- `plan_type` (String) Plan type. Changing it replaces the cluster.
 - `region` (String) Region
 
 ### Optional
 
-- `auto_update` (Boolean) Auto Update
+- `auto_update` (Boolean) Auto Update. Changing it replaces the cluster.
+- `description` (String) Description of the cluster (1 to 150 characters). Remove the attribute to clear it.
 
 ### Read-Only
 

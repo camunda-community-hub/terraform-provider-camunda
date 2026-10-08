@@ -6,12 +6,15 @@ import (
 	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
@@ -28,6 +31,8 @@ type camundaClusterData struct {
 	PlanType   types.String `tfsdk:"plan_type"`
 	Generation types.String `tfsdk:"generation"`
 	AutoUpdate types.Bool   `tfsdk:"auto_update"`
+
+	Description types.String `tfsdk:"description"`
 }
 
 type CamundaClusterResource struct {
@@ -44,7 +49,10 @@ func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.Meta
 
 func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manage a cluster on Camunda SaaS",
+		MarkdownDescription: "Manage a cluster on Camunda SaaS. " +
+			"Only `name` and `description` can be updated in place. Changing `plan_type`, `generation`, " +
+			"`auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. " +
+			"Use `lifecycle { prevent_destroy = true }` to guard against this.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -67,18 +75,26 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"plan_type": schema.StringAttribute{
-				MarkdownDescription: "Plan type",
+				MarkdownDescription: "Plan type. Changing it replaces the cluster.",
 				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"generation": schema.StringAttribute{
-				MarkdownDescription: "Generation",
+				MarkdownDescription: "Generation. Changing it replaces the cluster.",
 				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"auto_update": schema.BoolAttribute{
-				MarkdownDescription: "Auto Update",
+				MarkdownDescription: "Auto Update. Changing it replaces the cluster.",
 				Optional:            true,
 				Default:             booldefault.StaticBool(true),
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.RequiresReplace()},
+			},
+			"description": schema.StringAttribute{
+				MarkdownDescription: "Description of the cluster (1 to 150 characters). Remove the attribute to clear it.",
+				Optional:            true,
+				Validators:          []validator.String{stringvalidator.LengthBetween(1, 150)},
 			},
 		},
 	}
@@ -121,6 +137,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		GenerationId: data.Generation.ValueString(),
 		RegionId:     data.Region.ValueString(),
 		AutoUpdate:   data.AutoUpdate.ValueBoolPointer(),
+		Description:  data.Description.ValueStringPointer(),
 	}
 
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
@@ -228,6 +245,11 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 	data.PlanType = types.StringValue(cluster.PlanType.Uuid)
 	data.Generation = types.StringValue(cluster.Generation.Uuid)
 	data.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
+	if cluster.Description == nil || *cluster.Description == "" {
+		data.Description = types.StringNull()
+	} else {
+		data.Description = types.StringPointerValue(cluster.Description)
+	}
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -243,27 +265,27 @@ func (r *CamundaClusterResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	// The management API only allows renaming a cluster in place. Refuse changes
-	// to anything else instead of silently recording them in the state.
-	if !plan.PlanType.Equal(state.PlanType) || !plan.Generation.Equal(state.Generation) || !plan.AutoUpdate.Equal(state.AutoUpdate) {
-		resp.Diagnostics.AddError(
-			"Unsupported cluster update",
-			"Only the name of a cluster can be updated in place; changing plan_type, generation or auto_update is not supported.",
-		)
-		return
-	}
+	// plan_type, generation and auto_update cannot be updated in place and force replacement,
+	// so only name and description can differ here.
+	if !plan.Name.Equal(state.Name) || !plan.Description.Equal(state.Description) {
+		ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
+		// An empty description clears it; omitting the field would leave it unchanged.
+		description := plan.Description.ValueString()
 
-	_, err := r.provider.client.DefaultAPI.UpdateCluster(ctx, state.Id.ValueString()).
-		UpdateClusterBody(console.UpdateClusterBody{Name: plan.Name.ValueStringPointer()}).
-		Execute()
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Client Error",
-			fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), formatClientError(err)),
-		)
-		return
+		_, err := r.provider.client.DefaultAPI.UpdateCluster(ctx, state.Id.ValueString()).
+			UpdateClusterBody(console.UpdateClusterBody{
+				Name:        plan.Name.ValueStringPointer(),
+				Description: &description,
+			}).
+			Execute()
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Client Error",
+				fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), formatClientError(err)),
+			)
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
