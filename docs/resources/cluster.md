@@ -47,6 +47,8 @@ resource "camunda_cluster" "test" {
   generation = data.camunda_channel.this.default_generation_id
   region     = data.camunda_region.this.id
   plan_type  = data.camunda_cluster_plan_type.this.id
+
+  auto_update = true
 }
 ```
 
@@ -60,6 +62,10 @@ resource "camunda_cluster" "test" {
 - `name` (String) The name of the cluster
 - `plan_type` (String) Plan type
 - `region` (String) Region
+
+### Optional
+
+- `auto_update` (Boolean) Auto Update
 
 ### Read-Only
 

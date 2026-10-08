@@ -50,6 +50,8 @@ resource "camunda_cluster" "test" {
   generation = data.camunda_channel.this.default_generation_id
   region     = data.camunda_region.this.id
   plan_type  = data.camunda_cluster_type.this.id
+
+  auto_update = true
 }
 
 resource "camunda_cluster_ip_whitelist" "test" {
