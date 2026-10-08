@@ -16,8 +16,16 @@ data "camunda_channel" "alpha" {
   name = "Alpha"
 }
 
+data "camunda_channel" "stable" {
+  name = "Stable"
+}
+
 output "data" {
-  value = data.camunda_channel.alpha
+  value = data.camunda_channel.stable
+}
+
+output "generation" {
+  value = data.camunda_channel.stable.allowed_generations
 }
 ```
 
@@ -46,6 +54,15 @@ resource "camunda_cluster" "test" {
 
 ### Read-Only
 
+- `allowed_generations` (Attributes List) The allowed generations for this channel (see [below for nested schema](#nestedatt--allowed_generations))
 - `default_generation_id` (String) The ID of the default generation for this channel
 - `default_generation_name` (String) The name of the default generation for this channel
 - `id` (String) The ID of the channel
+
+<a id="nestedatt--allowed_generations"></a>
+### Nested Schema for `allowed_generations`
+
+Read-Only:
+
+- `id` (String) The ID of the generation
+- `name` (String) The name of the generation

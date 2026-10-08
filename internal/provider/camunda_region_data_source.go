@@ -81,7 +81,7 @@ func (d *CamundaRegionDataSource) Read(ctx context.Context, req datasource.ReadR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read parameters, got error: %s", err.(*console.GenericOpenAPIError).Body()),
+			fmt.Sprintf("Unable to read parameters, got error: %s", formatClientError(err)),
 		)
 		return
 	}

@@ -1,16 +1,19 @@
 {
-  "extends": ["config:base"],
-  "postUpdateOptions": ["gomodTidy"],
-  "packageRules": [
+  extends: [
+    'config:recommended',
+  ],
+  postUpdateOptions: [
+    'gomodTidy',
+  ],
+  packageRules: [
     {
-      // Automerge minor releases
-      "automerge": true,
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "pin",
-        "digest",
+      automerge: true,
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+        'pin',
+        'digest',
       ],
-    }
-  ]
+    },
+  ],
 }

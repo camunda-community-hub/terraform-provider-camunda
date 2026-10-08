@@ -19,20 +19,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.19"
-      - uses: actions/checkout@v4
+          go-version: "1.27"
+      - uses: actions/checkout@v6
       - run: go mod download
       - run: go build -v .
 
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.19"
-      - uses: actions/checkout@v4
+          go-version: "1.27"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: actions/checkout@v6
       - run: go generate ./...
       - name: git diff
         run: |
@@ -44,13 +47,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.19"
-      - uses: actions/checkout@v4
+          go-version: "1.27"
+      - uses: actions/checkout@v6
       - run: go mod download
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v9
 
   # Run acceptance tests in a matrix with Terraform CLI versions
   test:
@@ -63,18 +66,22 @@ jobs:
       matrix:
         # list whatever Terraform versions here you would like to support
         terraform:
-          - '1.2.*'
-          - '1.3.*'
-          - '1.4.*'
+          - '1.5.*'
+          - '1.6.*'
+          - '1.7.*'
+          - '1.8.*'
+          - '1.9.*'
+          - '1.10.*'
+          - '1.11.*'
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.19"
+          go-version: "1.27"
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: go mod download
       - env:
           TF_ACC: "0"

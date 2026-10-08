@@ -119,7 +119,7 @@ func (r *CamundaClusterConnectorSecretResource) Create(ctx context.Context, req 
 		resp.Diagnostics.AddError(
 			"Unable to create cluster connector secret",
 			fmt.Sprintf("Unable to create cluster connector secret, got error: %s",
-				err.(*console.GenericOpenAPIError).Body()),
+				formatClientError(err)),
 		)
 		return
 	}
@@ -162,7 +162,7 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 		resp.Diagnostics.AddError(
 			"Connector Secret Error",
 			fmt.Sprintf("Unable to read cluster connector secrets Name=%s, ClusterID=%s, got error: %s",
-				data.Name.ValueString(), data.ClusterId.ValueString(), err.(*console.GenericOpenAPIError).Body()),
+				data.Name.ValueString(), data.ClusterId.ValueString(), formatClientError(err)),
 		)
 		return
 	}
@@ -219,7 +219,7 @@ func (r *CamundaClusterConnectorSecretResource) Delete(ctx context.Context, req 
 		resp.Diagnostics.AddError(
 			"Connector Secret Error",
 			fmt.Sprintf("Unable to delete cluster connector secret Name=%s, ClusterId=%s, got error: %s",
-				data.Name.ValueString(), data.ClusterId.ValueString(), err.(console.GenericOpenAPIError).Body()),
+				data.Name.ValueString(), data.ClusterId.ValueString(), formatClientError(err)),
 		)
 		return
 	}
