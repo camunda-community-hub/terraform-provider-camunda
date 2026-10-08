@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"regexp"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -237,7 +236,7 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 	client, response, err := r.provider.client.DefaultAPI.
 		GetClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
 		Execute()
-	if err != nil && response.StatusCode == http.StatusNotFound {
+	if isNotFound(err, response) {
 		resp.State.RemoveResource(ctx)
 		return
 	}

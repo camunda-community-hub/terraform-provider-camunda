@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -210,7 +209,7 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	cluster, response, err := r.provider.client.DefaultAPI.GetCluster(ctx, data.Id.ValueString()).Execute()
-	if err != nil && response.StatusCode == http.StatusNotFound {
+	if isNotFound(err, response) {
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -235,17 +234,39 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 }
 
 func (r *CamundaClusterResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data camundaClusterData
+	var plan, state camundaClusterData
 
-	diags := req.Plan.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	// The management API only allows renaming a cluster in place. Refuse changes
+	// to anything else instead of silently recording them in the state.
+	if !plan.PlanType.Equal(state.PlanType) || !plan.Generation.Equal(state.Generation) || !plan.AutoUpdate.Equal(state.AutoUpdate) {
+		resp.Diagnostics.AddError(
+			"Unsupported cluster update",
+			"Only the name of a cluster can be updated in place; changing plan_type, generation or auto_update is not supported.",
+		)
+		return
+	}
+
+	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
+
+	_, err := r.provider.client.DefaultAPI.UpdateCluster(ctx, state.Id.ValueString()).
+		UpdateClusterBody(console.UpdateClusterBody{Name: plan.Name.ValueStringPointer()}).
+		Execute()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), formatClientError(err)),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
