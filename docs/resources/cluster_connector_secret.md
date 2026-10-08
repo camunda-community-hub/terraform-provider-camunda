@@ -37,5 +37,5 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 
 ```shell
 # Connector secrets are imported by "<cluster_id>/<secret_name>".
-terraform import camunda_cluster_connector_secret.example <cluster_id>/<secret_name>
+terraform import camunda_cluster_connector_secret.example '<cluster_id>/<secret_name>'
 ```
