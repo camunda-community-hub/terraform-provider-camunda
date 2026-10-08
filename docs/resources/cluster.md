@@ -66,7 +66,7 @@ resource "camunda_cluster" "test" {
 ### Optional
 
 - `auto_update` (Boolean) Auto Update. Changing it replaces the cluster.
-- `description` (String) Description of the cluster (max 150 characters)
+- `description` (String) Description of the cluster (1 to 150 characters). Remove the attribute to clear it.
 
 ### Read-Only
 

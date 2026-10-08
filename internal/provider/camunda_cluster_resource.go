@@ -92,9 +92,9 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.RequiresReplace()},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Description of the cluster (max 150 characters)",
+				MarkdownDescription: "Description of the cluster (1 to 150 characters). Remove the attribute to clear it.",
 				Optional:            true,
-				Validators:          []validator.String{stringvalidator.LengthAtMost(150)},
+				Validators:          []validator.String{stringvalidator.LengthBetween(1, 150)},
 			},
 		},
 	}
