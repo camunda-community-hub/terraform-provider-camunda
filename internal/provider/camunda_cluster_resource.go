@@ -49,7 +49,7 @@ func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.Meta
 
 func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manage a cluster on Camunda SaaS.\n\n" +
+		MarkdownDescription: "Manage a cluster on Camunda SaaS. " +
 			"Only `name` and `description` can be updated in place. Changing `plan_type`, `generation`, " +
 			"`auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. " +
 			"Use `lifecycle { prevent_destroy = true }` to guard against this.",
