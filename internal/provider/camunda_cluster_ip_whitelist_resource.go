@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/camunda-community-hub/terraform-provider-camunda/internal/validators"
@@ -152,7 +151,7 @@ func (r *CamundaClusterIPWhiteListResource) Read(ctx context.Context, req resour
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	cluster, response, err := r.provider.client.DefaultAPI.GetCluster(ctx, data.Id.ValueString()).Execute()
-	if err != nil && response.StatusCode == http.StatusNotFound {
+	if isNotFound(err, response) {
 		resp.State.RemoveResource(ctx)
 		return
 	}

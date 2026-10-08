@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"regexp"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -59,7 +58,7 @@ func (r *CamundaClusterConnectorSecretResource) Schema(ctx context.Context, req 
 			"cluster_id": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Cluster ID",
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"value": schema.StringAttribute{
 				MarkdownDescription: "The value of the connector secret",
@@ -153,7 +152,7 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
 	secrets, response, err := r.provider.client.DefaultAPI.GetSecrets(ctx, data.ClusterId.ValueString()).Execute()
-	if err != nil && response.StatusCode == http.StatusNotFound {
+	if isNotFound(err, response) {
 		resp.State.RemoveResource(ctx)
 		return
 	}
