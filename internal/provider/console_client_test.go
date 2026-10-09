@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 )
@@ -138,6 +140,126 @@ func TestConsoleClientClearsIPAllowlist(t *testing.T) {
 	}
 	if !strings.Contains(body, `"ipallowlist":[]`) {
 		t.Fatalf("expected an empty allowlist in the request, got %s", body)
+	}
+}
+
+// memberServer serves a fixed member list and counts how often it is fetched.
+func memberServer(t *testing.T, f *fakeConsole, emails ...string) *atomic.Int32 {
+	t.Helper()
+
+	var fetches atomic.Int32
+	f.mux.HandleFunc("GET /members", func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		members := []console.Member{}
+		for _, email := range emails {
+			members = append(members, console.Member{Email: email, Roles: []console.OrganizationRole{console.ORGANIZATIONROLE_DEVELOPER}})
+		}
+		writeJSON(t, w, members)
+	})
+	f.mux.HandleFunc("POST /members/{email}", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	f.mux.HandleFunc("DELETE /members/{email}", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	return &fetches
+}
+
+func TestConsoleClientFetchesMemberListOnceForConcurrentLookups(t *testing.T) {
+	f := newFakeConsole(t)
+	fetches := memberServer(t, f, "a@example.com", "b@example.com")
+	client := f.client(t)
+
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := client.GetMember(context.Background(), "a@example.com"); err != nil {
+				t.Errorf("GetMember: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := fetches.Load(); got != 1 {
+		t.Errorf("fetched the member list %d times, want 1", got)
+	}
+	if _, err := client.GetMember(context.Background(), "missing@example.com"); !errors.Is(err, errNotFound) {
+		t.Errorf("err = %v, want errNotFound", err)
+	}
+	if got := fetches.Load(); got != 1 {
+		t.Errorf("a miss refetched the member list (%d fetches)", got)
+	}
+}
+
+func TestConsoleClientRefetchesMemberListAfterTTL(t *testing.T) {
+	f := newFakeConsole(t)
+	fetches := memberServer(t, f, "a@example.com")
+	client := f.client(t)
+
+	now := time.Now()
+	client.members.now = func() time.Time { return now }
+
+	for range 2 {
+		if _, err := client.GetMember(context.Background(), "a@example.com"); err != nil {
+			t.Fatalf("GetMember: %v", err)
+		}
+	}
+	if got := fetches.Load(); got != 1 {
+		t.Fatalf("fetches within the TTL = %d, want 1", got)
+	}
+
+	now = now.Add(memberCacheTTL)
+	if _, err := client.GetMember(context.Background(), "a@example.com"); err != nil {
+		t.Fatalf("GetMember: %v", err)
+	}
+	if got := fetches.Load(); got != 2 {
+		t.Errorf("fetches after the TTL = %d, want 2", got)
+	}
+}
+
+func TestConsoleClientKeepsMemberCacheCurrentAfterWrites(t *testing.T) {
+	f := newFakeConsole(t)
+	fetches := memberServer(t, f, "a@example.com")
+	client := f.client(t)
+	ctx := context.Background()
+
+	if _, err := client.GetMember(ctx, "a@example.com"); err != nil {
+		t.Fatalf("GetMember: %v", err)
+	}
+
+	if err := client.SetMemberRoles(ctx, "new@example.com", []string{"admin"}); err != nil {
+		t.Fatalf("SetMemberRoles: %v", err)
+	}
+	invited, err := client.GetMember(ctx, "new@example.com")
+	if err != nil {
+		t.Fatalf("invited member not found: %v", err)
+	}
+	if len(invited.Roles) != 1 || invited.Roles[0] != console.ORGANIZATIONROLE_ADMIN {
+		t.Errorf("invited roles = %v, want [admin]", invited.Roles)
+	}
+
+	if err := client.SetMemberRoles(ctx, "a@example.com", []string{"visitor"}); err != nil {
+		t.Fatalf("SetMemberRoles: %v", err)
+	}
+	updated, err := client.GetMember(ctx, "a@example.com")
+	if err != nil {
+		t.Fatalf("GetMember: %v", err)
+	}
+	if len(updated.Roles) != 1 || updated.Roles[0] != console.ORGANIZATIONROLE_VISITOR {
+		t.Errorf("updated roles = %v, want [visitor]", updated.Roles)
+	}
+
+	if err := client.DeleteMember(ctx, "a@example.com"); err != nil {
+		t.Fatalf("DeleteMember: %v", err)
+	}
+	if _, err := client.GetMember(ctx, "a@example.com"); !errors.Is(err, errNotFound) {
+		t.Errorf("deleted member: err = %v, want errNotFound", err)
+	}
+
+	if got := fetches.Load(); got != 1 {
+		t.Errorf("writes caused %d fetches, want the single initial one", got)
 	}
 }
 

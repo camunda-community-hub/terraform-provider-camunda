@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -43,6 +45,11 @@ type consoleClientConfig struct {
 // Deletes treat a missing object as success.
 type consoleClient struct {
 	api *console.DefaultAPIService
+
+	// Organization members have no single-member endpoint, so every lookup
+	// needs the whole list. It is cached to keep N member resources from
+	// fetching the same N-sized list N times.
+	members memberCache
 
 	// Cluster health polling; overridden in tests.
 	clusterWaitTimeout  time.Duration
@@ -335,14 +342,50 @@ func (c *consoleClient) DeleteSecret(ctx context.Context, clusterID, name string
 
 // Organization members
 
+// memberCacheTTL bounds how long a fetched member list is reused. It only has
+// to span one Terraform operation; changes made outside of it show up on the
+// next one.
+const memberCacheTTL = 30 * time.Second
+
+// memberCache holds the organization's member list. Writes through the client
+// update it in place, so applying many members does not refetch the list.
+type memberCache struct {
+	mu        sync.Mutex
+	members   []console.Member
+	fetchedAt time.Time
+
+	// Overridden in tests.
+	now func() time.Time
+}
+
+func (m *memberCache) time() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
+}
+
 // GetMember returns the member with the given email, or errNotFound.
+//
+// The Console API only offers the full member list, which is cached for
+// memberCacheTTL. Concurrent callers wait for a single fetch.
 func (c *consoleClient) GetMember(ctx context.Context, email string) (*console.Member, error) {
-	members, response, err := c.api.GetMembers(ctx).Execute()
-	if err != nil {
-		return nil, apiError(err, response)
+	c.members.mu.Lock()
+	defer c.members.mu.Unlock()
+
+	if c.members.members == nil || c.members.time().Sub(c.members.fetchedAt) >= memberCacheTTL {
+		members, response, err := c.api.GetMembers(ctx).Execute()
+		if err != nil {
+			return nil, apiError(err, response)
+		}
+		if members == nil {
+			members = []console.Member{}
+		}
+		c.members.members = members
+		c.members.fetchedAt = c.members.time()
 	}
 
-	for _, member := range members {
+	for _, member := range c.members.members {
 		if member.Email == email {
 			return &member, nil
 		}
@@ -364,12 +407,54 @@ func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles 
 	response, err := c.api.UpdateMembers(ctx, email).
 		PostMemberBody(console.PostMemberBody{OrgRoles: orgRoles}).
 		Execute()
-	return apiError(err, response)
+	if err != nil {
+		return apiError(err, response)
+	}
+
+	c.members.setRoles(email, orgRoles)
+	return nil
 }
 
 func (c *consoleClient) DeleteMember(ctx context.Context, email string) error {
 	response, err := c.api.DeleteMember(ctx, email).Execute()
-	return ignoreNotFound(apiError(err, response))
+	err = ignoreNotFound(apiError(err, response))
+	if err == nil {
+		c.members.remove(email)
+	}
+	return err
+}
+
+// setRoles records the roles just sent to the API. A member that is not cached
+// yet was invited, so it is added.
+func (m *memberCache) setRoles(email string, assigned []console.AssignableOrganizationRoleType) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.members == nil {
+		return
+	}
+
+	roles := make([]console.OrganizationRole, 0, len(assigned))
+	for _, role := range assigned {
+		roles = append(roles, console.OrganizationRole(role))
+	}
+
+	for i := range m.members {
+		if m.members[i].Email == email {
+			m.members[i].Roles = roles
+			return
+		}
+	}
+	m.members = append(m.members, console.Member{Email: email, Roles: roles})
+}
+
+func (m *memberCache) remove(email string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.members = slices.DeleteFunc(m.members, func(member console.Member) bool {
+		return member.Email == email
+	})
 }
 
 // Parameters
