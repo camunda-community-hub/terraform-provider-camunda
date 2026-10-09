@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sync"
 	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -43,6 +44,11 @@ type consoleClientConfig struct {
 type consoleClient struct {
 	api *console.DefaultAPIService
 
+	// Organization members have no single-member endpoint, so every lookup
+	// needs the whole list. It is cached to keep N member resources from
+	// fetching the same N-sized list N times.
+	members memberCache
+
 	// Cluster health polling; overridden in tests.
 	clusterWaitTimeout  time.Duration
 	clusterWaitDelay    time.Duration
@@ -77,7 +83,14 @@ func newConsoleClient(ctx context.Context, cfg consoleClientConfig) (*consoleCli
 	apiCfg.Scheme = apiURL.Scheme
 	apiCfg.Host = apiURL.Host
 	apiCfg.Debug = cfg.Debug
-	apiCfg.HTTPClient = oauth2.NewClient(context.WithoutCancel(ctx), tokenSource)
+	// The retries sit outside the oauth2 transport, so every attempt gets a
+	// current token even if the waits outlast the previous one.
+	apiCfg.HTTPClient = &http.Client{
+		Transport: newRateLimitTransport(&oauth2.Transport{
+			Source: tokenSource,
+			Base:   http.DefaultTransport,
+		}),
+	}
 
 	return &consoleClient{
 		api:                 console.NewAPIClient(apiCfg).DefaultAPI,
@@ -156,7 +169,7 @@ func (c *consoleClient) getAPICluster(ctx context.Context, clusterID string) (*c
 // UpdateCluster sets the cluster's name and description; an empty description
 // clears it.
 func (c *consoleClient) UpdateCluster(ctx context.Context, clusterID, name, description string) error {
-	response, err := c.api.UpdateCluster(ctx, clusterID).
+	response, err := c.api.UpdateCluster(withReplayableWrite(ctx), clusterID).
 		UpdateClusterBody(console.UpdateClusterBody{Name: &name, Description: &description}).
 		Execute()
 	return apiError(err, response)
@@ -329,15 +342,51 @@ var assignableMemberRoles = []string{
 	string(console.ORGANIZATIONROLEVISITOR_VISITOR),
 }
 
+// memberCacheTTL bounds how long a fetched member list is reused. It only has
+// to span one Terraform operation; changes made outside of it show up on the
+// next one.
+const memberCacheTTL = 30 * time.Second
+
+// memberCache holds the organization's member list. Writes through the client
+// update it in place, so applying many members does not refetch the list.
+type memberCache struct {
+	mu        sync.Mutex
+	members   []console.Member
+	fetchedAt time.Time
+
+	// Overridden in tests.
+	now func() time.Time
+}
+
+func (m *memberCache) time() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
+}
+
 // GetMember returns the member with the given email, or errNotFound. Roles
 // holds only assignable roles; Owner reports the owner role.
+//
+// The Console API only offers the full member list, which is cached for
+// memberCacheTTL. Concurrent callers wait for a single fetch.
 func (c *consoleClient) GetMember(ctx context.Context, email string) (*member, error) {
-	members, response, err := c.api.GetMembers(ctx).Execute()
-	if err != nil {
-		return nil, apiError(err, response)
+	c.members.mu.Lock()
+	defer c.members.mu.Unlock()
+
+	if c.members.members == nil || c.members.time().Sub(c.members.fetchedAt) >= memberCacheTTL {
+		members, response, err := c.api.GetMembers(ctx).Execute()
+		if err != nil {
+			return nil, apiError(err, response)
+		}
+		if members == nil {
+			members = []console.Member{}
+		}
+		c.members.members = members
+		c.members.fetchedAt = c.members.time()
 	}
 
-	for _, listed := range members {
+	for _, listed := range c.members.members {
 		if listed.Email != email {
 			continue
 		}
@@ -377,10 +426,15 @@ func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles 
 		orgRoles = append(orgRoles, *role)
 	}
 
-	response, err := c.api.UpdateMembers(ctx, email).
+	response, err := c.api.UpdateMembers(withReplayableWrite(ctx), email).
 		PostMemberBody(console.PostMemberBody{OrgRoles: orgRoles}).
 		Execute()
-	return apiError(err, response)
+	if err != nil {
+		return apiError(err, response)
+	}
+
+	c.members.setRoles(email, orgRoles)
+	return nil
 }
 
 // DeleteMember removes the member, or returns errOwnerUnchangeable for the
@@ -395,7 +449,45 @@ func (c *consoleClient) DeleteMember(ctx context.Context, email string) error {
 	}
 
 	response, err := c.api.DeleteMember(ctx, email).Execute()
-	return apiError(err, response)
+	err = apiError(err, response)
+	// A member that is already gone must not linger in the cache either.
+	if err == nil || errors.Is(err, errNotFound) {
+		c.members.remove(email)
+	}
+	return err
+}
+
+// setRoles records the roles just sent to the API. A member that is not cached
+// yet was invited, so it is added.
+func (m *memberCache) setRoles(email string, assigned []console.AssignableOrganizationRoleType) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.members == nil {
+		return
+	}
+
+	roles := make([]console.OrganizationRole, 0, len(assigned))
+	for _, role := range assigned {
+		roles = append(roles, console.OrganizationRole(role))
+	}
+
+	for i := range m.members {
+		if m.members[i].Email == email {
+			m.members[i].Roles = roles
+			return
+		}
+	}
+	m.members = append(m.members, console.Member{Email: email, Roles: roles})
+}
+
+func (m *memberCache) remove(email string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.members = slices.DeleteFunc(m.members, func(member console.Member) bool {
+		return member.Email == email
+	})
 }
 
 // Parameters
