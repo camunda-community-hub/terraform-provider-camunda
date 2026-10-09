@@ -75,7 +75,7 @@ output "scopes" {
 Import is supported using the following syntax:
 
 ```shell
-# Import a cluster client by "<cluster_id>/<zeebe_client_id>".
+# Cluster clients are imported by "<cluster_id>/<zeebe_client_id>".
 # The client secret is only available when the client is created, so it is empty after an import.
-terraform import camunda_cluster_client.test <cluster_id>/<zeebe_client_id>
+terraform import camunda_cluster_client.test '<cluster_id>/<zeebe_client_id>'
 ```

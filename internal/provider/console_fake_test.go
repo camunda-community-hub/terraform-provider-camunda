@@ -233,14 +233,15 @@ func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
 
 	id := s.newID("cluster")
 	s.clusters[id] = &console.Cluster{
-		Uuid:       id,
-		Name:       req.Name,
-		Channel:    console.ClusterChannel{Uuid: req.ChannelId},
-		Region:     console.ClusterRegion{Uuid: req.RegionId},
-		PlanType:   console.ClusterPlanType{Uuid: req.PlanTypeId},
-		Generation: console.ClusterGeneration{Uuid: req.GenerationId},
-		AutoUpdate: req.AutoUpdate != nil && *req.AutoUpdate,
-		Status:     console.ClusterStatus{Ready: console.CLUSTERCOMPONENTSTATUS_CREATING},
+		Uuid:        id,
+		Name:        req.Name,
+		Channel:     console.ClusterChannel{Uuid: req.ChannelId},
+		Region:      console.ClusterRegion{Uuid: req.RegionId},
+		PlanType:    console.ClusterPlanType{Uuid: req.PlanTypeId},
+		Generation:  console.ClusterGeneration{Uuid: req.GenerationId},
+		AutoUpdate:  req.AutoUpdate != nil && *req.AutoUpdate,
+		Description: req.Description,
+		Status:      console.ClusterStatus{Ready: console.CLUSTERCOMPONENTSTATUS_CREATING},
 	}
 	s.creating[id] = 2
 	writeJSON(s.t, w, console.CreateCluster200Response{ClusterId: id})
@@ -275,6 +276,9 @@ func (s *consoleState) updateCluster(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name != nil {
 		cluster.Name = *req.Name
+	}
+	if req.Description != nil {
+		cluster.Description = req.Description
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -6,21 +6,21 @@ import (
 	"fmt"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ resource.Resource = &CamundaClusterResource{}
 var _ resource.ResourceWithImportState = &CamundaClusterResource{}
-var _ resource.ResourceWithModifyPlan = &CamundaClusterResource{}
 
 type camundaClusterData struct {
 	Id         types.String `tfsdk:"id"`
@@ -31,6 +31,7 @@ type camundaClusterData struct {
 	Generation types.String `tfsdk:"generation"`
 	AutoUpdate types.Bool   `tfsdk:"auto_update"`
 
+	Description       types.String `tfsdk:"description"`
 	CurrentGeneration types.String `tfsdk:"current_generation"`
 }
 
@@ -48,7 +49,10 @@ func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.Meta
 
 func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manage a cluster on Camunda SaaS",
+		MarkdownDescription: "Manage a cluster on Camunda SaaS. " +
+			"Only `name` and `description` can be updated in place. Changing `plan_type`, `generation` " +
+			"(unless `auto_update` is enabled), `auto_update`, `channel` or `region` destroys and recreates the cluster, " +
+			"**deleting all data of the cluster**. Use `lifecycle { prevent_destroy = true }` to guard against this.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -71,12 +75,20 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"plan_type": schema.StringAttribute{
-				MarkdownDescription: "Plan type",
+				MarkdownDescription: "Plan type. Changing it replaces the cluster.",
 				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"generation": schema.StringAttribute{
-				MarkdownDescription: "Generation the cluster is created with. With `auto_update` enabled, Camunda upgrades the cluster over time; see `current_generation` for the generation it actually runs.",
+				MarkdownDescription: "Generation the cluster is created with. Changing it replaces the cluster, unless `auto_update` is enabled: Camunda then upgrades the cluster over time; see `current_generation` for the generation it actually runs.",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplaceIf(
+						generationChangeReplaces,
+						"Changing the generation replaces the cluster unless auto_update is enabled.",
+						"Changing the generation replaces the cluster unless `auto_update` is enabled.",
+					),
+				},
 			},
 			"current_generation": schema.StringAttribute{
 				MarkdownDescription: "Generation the cluster currently runs.",
@@ -84,10 +96,16 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"auto_update": schema.BoolAttribute{
-				MarkdownDescription: "Auto Update",
+				MarkdownDescription: "Auto Update. Changing it replaces the cluster.",
 				Optional:            true,
 				Default:             booldefault.StaticBool(true),
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.RequiresReplace()},
+			},
+			"description": schema.StringAttribute{
+				MarkdownDescription: "Description of the cluster (1 to 150 characters). Remove the attribute to clear it.",
+				Optional:            true,
+				Validators:          []validator.String{stringvalidator.LengthBetween(1, 150)},
 			},
 		},
 	}
@@ -121,6 +139,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		GenerationId: data.Generation.ValueString(),
 		RegionId:     data.Region.ValueString(),
 		AutoUpdate:   data.AutoUpdate.ValueBoolPointer(),
+		Description:  data.Description.ValueStringPointer(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -202,15 +221,10 @@ func (r *CamundaClusterResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	// ModifyPlan rejects these already; this guards against values that were
-	// still unknown at plan time.
-	resp.Diagnostics.Append(immutableClusterChanges(plan, state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !plan.Name.Equal(state.Name) {
-		err := r.client.RenameCluster(ctx, state.Id.ValueString(), plan.Name.ValueString())
+	// Every other change forces replacement, and a generation change while
+	// auto_update is on needs no API call.
+	if !plan.Name.Equal(state.Name) || !plan.Description.Equal(state.Description) {
+		err := r.client.UpdateCluster(ctx, state.Id.ValueString(), plan.Name.ValueString(), plan.Description.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Client Error",
@@ -247,52 +261,15 @@ func (r *CamundaClusterResource) ImportState(ctx context.Context, req resource.I
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// ModifyPlan rejects, at plan time, changes the management API cannot apply
-// to an existing cluster.
-func (r *CamundaClusterResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Nothing to compare when creating or destroying.
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
+// generationChangeReplaces lets the generation change in place while
+// auto_update is on: Camunda then moves the cluster to newer generations
+// itself, and the configured generation only records where it started.
+func generationChangeReplaces(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	var stateAutoUpdate, planAutoUpdate types.Bool
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("auto_update"), &stateAutoUpdate)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("auto_update"), &planAutoUpdate)...)
 
-	var plan, state camundaClusterData
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(immutableClusterChanges(plan, state)...)
-}
-
-// immutableClusterChanges reports every planned change that would require
-// recreating the cluster. Only the name can change in place; the generation
-// may also change while auto_update is on, since the server owns it then.
-func immutableClusterChanges(plan, state camundaClusterData) diag.Diagnostics {
-	var diags diag.Diagnostics
-
-	changed := func(planned, current attr.Value) bool {
-		return !planned.IsUnknown() && !planned.Equal(current)
-	}
-	reject := func(attribute string) {
-		diags.AddAttributeError(
-			path.Root(attribute),
-			fmt.Sprintf("Cannot change %s", attribute),
-			fmt.Sprintf("%s can't be changed on an existing cluster. To change it, recreate the cluster with `terraform apply -replace=<cluster resource address>`.", attribute),
-		)
-	}
-
-	if changed(plan.PlanType, state.PlanType) {
-		reject("plan_type")
-	}
-	if changed(plan.AutoUpdate, state.AutoUpdate) {
-		reject("auto_update")
-	}
-	if changed(plan.Generation, state.Generation) && !state.AutoUpdate.ValueBool() {
-		reject("generation")
-	}
-
-	return diags
+	resp.RequiresReplace = !stateAutoUpdate.ValueBool() || !planAutoUpdate.ValueBool()
 }
 
 // setFromAPI copies what the Console reports about the cluster into the model.
@@ -302,6 +279,11 @@ func (d *camundaClusterData) setFromAPI(cluster *console.Cluster) {
 	d.Region = types.StringValue(cluster.Region.Uuid)
 	d.PlanType = types.StringValue(cluster.PlanType.Uuid)
 	d.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
+	if cluster.Description == nil || *cluster.Description == "" {
+		d.Description = types.StringNull()
+	} else {
+		d.Description = types.StringPointerValue(cluster.Description)
+	}
 	d.CurrentGeneration = types.StringValue(cluster.Generation.Uuid)
 
 	// With auto_update the server moves the cluster to newer generations, so

@@ -167,9 +167,9 @@ func (r *CamundaClusterConnectorSecretResource) Delete(ctx context.Context, req 
 	}
 }
 
-// ImportState takes "<cluster_id>/<name>".
+// ImportState takes "<cluster_id>/<secret_name>".
 func (r *CamundaClusterConnectorSecretResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	clusterID, name, diags := splitImportID(req.ID, "<cluster_id>/<name>")
+	clusterID, name, diags := splitImportID(req.ID, "<cluster_id>/<secret_name>")
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

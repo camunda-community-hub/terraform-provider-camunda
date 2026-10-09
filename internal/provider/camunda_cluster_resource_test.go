@@ -2,13 +2,13 @@ package provider
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
@@ -64,17 +64,20 @@ func TestClusterResourceLifecycle(t *testing.T) {
 				),
 			},
 			{
-				Config:      clusterConfig(f, "two", fakeProdPlan, false),
-				ExpectError: regexp.MustCompile(`Cannot change plan_type`),
-			},
-			{
-				Config:      clusterConfig(f, "two", fakeTrialPlan, true),
-				ExpectError: regexp.MustCompile(`Cannot change auto_update`),
-			},
-			{
-				Config: strings.Replace(clusterConfig(f, "two", fakeTrialPlan, false),
-					"data.camunda_channel.stable.default_generation_id", strconv.Quote(fakeGeneration2), 1),
-				ExpectError: regexp.MustCompile(`Cannot change generation`),
+				// The plan type can't change in place, so the cluster is replaced.
+				Config: clusterConfig(f, "two", fakeProdPlan, false),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("camunda_cluster.test", "plan_type", fakeProdPlanID),
+					resource.TestCheckResourceAttrWith("camunda_cluster.test", "id", func(id string) error {
+						if id == clusterID {
+							return fmt.Errorf("expected the cluster to be replaced, still %s", id)
+						}
+						return nil
+					}),
+					func(*terraform.State) error {
+						return countIs(state, func(s *consoleState) int { return len(s.clusters) }, 1, "clusters")
+					},
+				),
 			},
 		},
 	})
@@ -112,6 +115,32 @@ func TestClusterResourceAutoUpdateGenerationDrift(t *testing.T) {
 	})
 }
 
+func TestClusterResourceGenerationChangeWithAutoUpdateKeepsCluster(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+	withGeneration := func(generation string) string {
+		return strings.Replace(clusterConfig(f, "auto", fakeTrialPlan, true),
+			"data.camunda_channel.stable.default_generation_id", strconv.Quote(generation), 1)
+	}
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			// State holding a newer generation than the configuration, as
+			// earlier provider versions stored after a Camunda upgrade.
+			{Config: withGeneration(fakeGeneration2)},
+			{
+				Config: withGeneration(fakeGeneration1),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("camunda_cluster.test", plancheck.ResourceActionUpdate),
+					},
+				},
+			},
+		},
+	})
+}
+
 func TestClusterResourceDeletedOutsideTerraform(t *testing.T) {
 	f := newFakeConsole(t)
 	state := f.serveConsole(t)
@@ -135,10 +164,15 @@ func TestClusterResourceDeletedOutsideTerraform(t *testing.T) {
 
 // noneLeft fails when the Console still holds objects after destroy.
 func noneLeft(state *consoleState, count func(*consoleState) int, what string) error {
+	return countIs(state, count, 0, what)
+}
+
+// countIs fails unless the Console holds exactly want objects.
+func countIs(state *consoleState, count func(*consoleState) int, want int, what string) error {
 	var n int
 	state.do(func(s *consoleState) { n = count(s) })
-	if n != 0 {
-		return fmt.Errorf("%d %s left in the Console after destroy", n, what)
+	if n != want {
+		return fmt.Errorf("Console holds %d %s, want %d", n, what, want)
 	}
 	return nil
 }

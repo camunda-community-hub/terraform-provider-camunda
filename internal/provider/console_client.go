@@ -113,12 +113,13 @@ func unexpectedUpdate() diag.Diagnostic {
 	)
 }
 
-// splitImportID splits an import ID of the form "<first>/<second>".
+// splitImportID splits an import ID of the form "<first>/<second>" at the
+// first slash, so the second part may itself contain slashes.
 func splitImportID(id, format string) (string, string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	first, second, ok := strings.Cut(id, "/")
-	if !ok || first == "" || second == "" || strings.Contains(second, "/") {
+	if !ok || first == "" || second == "" {
 		diags.AddError(
 			"Invalid import ID",
 			fmt.Sprintf("Expected an import ID of the form %q, got: %q", format, id),
@@ -171,9 +172,11 @@ func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*cons
 	return cluster, apiError(err, response)
 }
 
-func (c *consoleClient) RenameCluster(ctx context.Context, clusterID, name string) error {
+// UpdateCluster sets the cluster's name and description; an empty description
+// clears it.
+func (c *consoleClient) UpdateCluster(ctx context.Context, clusterID, name, description string) error {
 	response, err := c.api.UpdateCluster(ctx, clusterID).
-		UpdateClusterBody(console.UpdateClusterBody{Name: &name}).
+		UpdateClusterBody(console.UpdateClusterBody{Name: &name, Description: &description}).
 		Execute()
 	return apiError(err, response)
 }

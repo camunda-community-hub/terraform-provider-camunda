@@ -36,6 +36,6 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# Import a connector secret by "<cluster_id>/<name>".
-terraform import camunda_cluster_connector_secret.test <cluster_id>/<name>
+# Connector secrets are imported by "<cluster_id>/<secret_name>".
+terraform import camunda_cluster_connector_secret.test '<cluster_id>/<secret_name>'
 ```
