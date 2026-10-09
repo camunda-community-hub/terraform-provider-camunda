@@ -109,7 +109,19 @@ func apiError(err error, response *http.Response) error {
 
 // Clusters
 
-func (c *consoleClient) CreateCluster(ctx context.Context, req console.CreateClusterRequest) (string, error) {
+func (c *consoleClient) CreateCluster(ctx context.Context, cl cluster) (string, error) {
+	req := console.CreateClusterRequest{
+		Name:         cl.Name,
+		PlanTypeId:   cl.PlanTypeID,
+		ChannelId:    cl.ChannelID,
+		GenerationId: cl.GenerationID,
+		RegionId:     cl.RegionID,
+		AutoUpdate:   &cl.AutoUpdate,
+	}
+	if cl.Description != "" {
+		req.Description = &cl.Description
+	}
+
 	created, response, err := c.api.CreateCluster(ctx).CreateClusterRequest(req).Execute()
 	if err != nil {
 		return "", apiError(err, response)
@@ -117,9 +129,27 @@ func (c *consoleClient) CreateCluster(ctx context.Context, req console.CreateClu
 	return created.GetClusterId(), nil
 }
 
-func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*console.Cluster, error) {
-	cluster, response, err := c.api.GetCluster(ctx, clusterID).Execute()
-	return cluster, apiError(err, response)
+// GetCluster returns the cluster, or errNotFound.
+func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*cluster, error) {
+	found, err := c.getAPICluster(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	return &cluster{
+		ID:           found.Uuid,
+		Name:         found.Name,
+		Description:  found.GetDescription(),
+		ChannelID:    found.Channel.Uuid,
+		RegionID:     found.Region.Uuid,
+		PlanTypeID:   found.PlanType.Uuid,
+		GenerationID: found.Generation.Uuid,
+		AutoUpdate:   found.AutoUpdate,
+	}, nil
+}
+
+func (c *consoleClient) getAPICluster(ctx context.Context, clusterID string) (*console.Cluster, error) {
+	found, response, err := c.api.GetCluster(ctx, clusterID).Execute()
+	return found, apiError(err, response)
 }
 
 // UpdateCluster sets the cluster's name and description; an empty description
@@ -148,7 +178,7 @@ func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string
 		},
 		ContinuousTargetOccurence: 2,
 		Refresh: func() (interface{}, string, error) {
-			cluster, err := c.GetCluster(ctx, clusterID)
+			cluster, err := c.getAPICluster(ctx, clusterID)
 			if err != nil {
 				return nil, "", err
 			}
@@ -171,7 +201,7 @@ func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string
 
 // GetIPAllowlist returns the cluster's IP allowlist.
 func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([]console.ClusterIpallowlistInner, error) {
-	cluster, err := c.GetCluster(ctx, clusterID)
+	cluster, err := c.getAPICluster(ctx, clusterID)
 	if err != nil {
 		return nil, err
 	}
