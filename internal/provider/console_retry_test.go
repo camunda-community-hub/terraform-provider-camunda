@@ -321,3 +321,58 @@ func TestRateLimitTransportCapsHugeRetryAfter(t *testing.T) {
 		t.Errorf("slept %v, want [%s] rather than an immediate retry", *sleeps, tr.maxBackoff)
 	}
 }
+
+// bodyTracker counts the bodies handed out by GetBody and how many were closed.
+type bodyTracker struct{ opened, closed int }
+
+func (b *bodyTracker) getBody() (io.ReadCloser, error) {
+	b.opened++
+	return &trackedBody{Reader: strings.NewReader(`{}`), tracker: b}, nil
+}
+
+type trackedBody struct {
+	io.Reader
+	tracker *bodyTracker
+}
+
+func (b *trackedBody) Close() error {
+	b.tracker.closed++
+	return nil
+}
+
+func TestRateLimitTransportDoesNotOpenBodiesItNeverSends(t *testing.T) {
+	t.Run("wait budget exhausted", func(t *testing.T) {
+		tr, _, _ := recordingTransport([]int{429}, http.Header{"Retry-After": []string{"30"}})
+		tr.maxWait = 10 * time.Second
+
+		tracker := &bodyTracker{}
+		req := newPost(t, context.Background())
+		req.GetBody = tracker.getBody
+
+		resp, err := tr.RoundTrip(req)
+		if err != nil {
+			t.Fatalf("RoundTrip: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if tracker.opened != 0 {
+			t.Errorf("opened %d bodies that were never sent", tracker.opened)
+		}
+	})
+
+	t.Run("cancelled while waiting", func(t *testing.T) {
+		tr, _, _ := recordingTransport([]int{429}, nil)
+		tr.sleep = func(ctx context.Context, d time.Duration) error { return context.Canceled }
+
+		tracker := &bodyTracker{}
+		req := newPost(t, context.Background())
+		req.GetBody = tracker.getBody
+
+		if _, err := tr.RoundTrip(req); !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+		if tracker.opened != 0 {
+			t.Errorf("opened %d bodies that were never sent", tracker.opened)
+		}
+	})
+}

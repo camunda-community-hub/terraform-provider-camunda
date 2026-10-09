@@ -90,8 +90,7 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		}
 
 		// A request body can only be replayed if it can be recreated.
-		next, ok := rewind(req)
-		if !ok {
+		if !canRewind(req) {
 			return resp, nil
 		}
 
@@ -114,25 +113,35 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		if err := t.sleep(req.Context(), delay); err != nil {
 			return nil, fmt.Errorf("giving up on rate limited request: %w", err)
 		}
+
+		// Recreate the body only now that the request is really going out again,
+		// so no early return leaves an unsent body open.
+		next, err := rewind(req)
+		if err != nil {
+			return nil, fmt.Errorf("unable to replay rate limited request: %w", err)
+		}
 		req = next
 	}
 }
 
-// rewind returns a copy of req that can be sent again.
-func rewind(req *http.Request) (*http.Request, bool) {
+// canRewind reports whether rewind can recreate the request body.
+func canRewind(req *http.Request) bool {
+	return req.Body == nil || req.Body == http.NoBody || req.GetBody != nil
+}
+
+// rewind returns a copy of req with a fresh body, so it can be sent again.
+func rewind(req *http.Request) (*http.Request, error) {
 	next := req.Clone(req.Context())
 	if req.Body == nil || req.Body == http.NoBody {
-		return next, true
+		return next, nil
 	}
-	if req.GetBody == nil {
-		return nil, false
-	}
+
 	body, err := req.GetBody()
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 	next.Body = body
-	return next, true
+	return next, nil
 }
 
 // delay is how long to wait before retry number attempt+1.
