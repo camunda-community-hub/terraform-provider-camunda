@@ -64,7 +64,7 @@ output "scopes" {
 
 ### Read-Only
 
-- `id` (String) Cluster Client ID
+- `id` (String) Cluster Client ID, in the form `<cluster_id>/<zeebe_client_id>`
 - `secret` (String, Sensitive) The client secret
 - `zeebe_address` (String) Zeebe Address
 - `zeebe_authorization_server_url` (String) Zeebe Authorization Server Url

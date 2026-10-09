@@ -18,7 +18,7 @@ import (
 // must stay updatable in place.
 func TestCamundaClusterReplaceAttributes(t *testing.T) {
 	ctx := context.Background()
-	r := &CamundaClusterResource{}
+	r := NewCamundaClusterResource()
 
 	schemaResp := &resource.SchemaResponse{}
 	r.Schema(ctx, resource.SchemaRequest{}, schemaResp)

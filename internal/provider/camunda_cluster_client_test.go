@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -55,6 +56,12 @@ func TestClusterClientResource(t *testing.T) {
 					resource.TestCheckResourceAttr("camunda_cluster_client.test", "scopes.#", "1"),
 					resource.TestCheckResourceAttrSet("camunda_cluster_client.test", "secret"),
 					resource.TestCheckResourceAttrSet("camunda_cluster_client.test", "zeebe_client_id"),
+					resource.TestCheckResourceAttrWith("camunda_cluster_client.test", "id", func(id string) error {
+						if !strings.Contains(id, "/") {
+							return fmt.Errorf("expected id <cluster_id>/<zeebe_client_id>, got %q", id)
+						}
+						return nil
+					}),
 					resource.TestCheckResourceAttr("camunda_cluster_client.test", "zeebe_address", fakeZeebeAddress),
 				),
 			},
@@ -63,10 +70,8 @@ func TestClusterClientResource(t *testing.T) {
 				ImportState:       true,
 				ImportStateIdFunc: clusterClientImportID,
 				ImportStateVerify: true,
-				// The imported id is the import ID, not the original UUID.
-				ImportStateVerifyIdentifierAttribute: "zeebe_client_id",
-				// The API returns neither the client UUID nor the secret again.
-				ImportStateVerifyIgnore: []string{"id", "secret"},
+				// The API only returns the secret when creating the client.
+				ImportStateVerifyIgnore: []string{"secret"},
 			},
 			{
 				// Scopes changed outside Terraform force a new client.

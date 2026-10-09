@@ -62,14 +62,14 @@ func TestConsoleClientGetReportsNotFound(t *testing.T) {
 	}
 }
 
-func TestConsoleClientDeleteTreatsNotFoundAsSuccess(t *testing.T) {
+func TestConsoleClientDeleteReportsNotFound(t *testing.T) {
 	f := newFakeConsole(t)
 	f.mux.HandleFunc("DELETE /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusNotFound)
 	})
 
-	if err := f.client(t).DeleteCluster(context.Background(), "c1"); err != nil {
-		t.Fatalf("expected nil, got %v", err)
+	if err := f.client(t).DeleteCluster(context.Background(), "c1"); !errors.Is(err, errNotFound) {
+		t.Fatalf("expected errNotFound, got %v", err)
 	}
 }
 
