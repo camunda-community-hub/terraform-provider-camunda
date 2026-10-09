@@ -3,9 +3,7 @@ package provider
 import (
 	"errors"
 	"fmt"
-	"slices"
 
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -19,17 +17,6 @@ import (
 type camundaOrganizationMemberData struct {
 	Email types.String `tfsdk:"email"`
 	Roles types.Set    `tfsdk:"roles"`
-}
-
-// assignableMemberRoles are the organization roles the API can assign. Other
-// roles a member may hold, such as owner, are left out of state and never sent.
-var assignableMemberRoles = []string{
-	string(console.ORGANIZATIONROLEADMIN_ADMIN),
-	string(console.ORGANIZATIONROLEOPERATIONSENGINEER_OPERATIONSENGINEER),
-	string(console.ORGANIZATIONROLETASKUSER_TASKUSER),
-	string(console.ORGANIZATIONROLEANALYST_ANALYST),
-	string(console.ORGANIZATIONROLEDEVELOPER_DEVELOPER),
-	string(console.ORGANIZATIONROLEVISITOR_VISITOR),
 }
 
 func NewCamundaOrganizationMemberResource() resource.Resource {
@@ -80,43 +67,36 @@ func organizationMemberSchema() schema.Schema {
 }
 
 // setOrganizationMemberRoles invites the member if needed and replaces their
-// roles, unless the member is the organization owner, whose roles the API
-// won't change. For the owner it only warns.
+// roles. For the owner, whose roles the API won't change, it only warns.
 func setOrganizationMemberRoles(op *op, plan camundaOrganizationMemberData) (camundaOrganizationMemberData, error) {
-	email := plan.Email.ValueString()
-
 	var roles []string
 	if diags := plan.Roles.ElementsAs(op.ctx, &roles, false); diags.HasError() {
 		return plan, diagsError(diags)
 	}
 
-	member, err := op.client.GetMember(op.ctx, email)
-	if err != nil && !errors.Is(err, errNotFound) {
-		return plan, err
-	}
-	if err == nil && isOwner(member) {
+	err := op.client.SetMemberRoles(op.ctx, plan.Email.ValueString(), roles)
+	if errors.Is(err, errOwnerUnchangeable) {
 		op.Warn(
 			"Organization owner roles not changed",
-			fmt.Sprintf("%s is the organization owner, whose roles can't be changed through the API. The roles were recorded in Terraform state but not sent to Camunda.", email),
+			fmt.Sprintf("%s is the organization owner, whose roles can't be changed through the API. The roles were recorded in Terraform state but not sent to Camunda.", plan.Email.ValueString()),
 		)
 		return plan, nil
 	}
-
-	return plan, op.client.SetMemberRoles(op.ctx, email, roles)
+	return plan, err
 }
 
 func readOrganizationMember(op *op, prior camundaOrganizationMemberData) (camundaOrganizationMemberData, error) {
-	member, err := op.client.GetMember(op.ctx, prior.Email.ValueString())
+	found, err := op.client.GetMember(op.ctx, prior.Email.ValueString())
 	if err != nil {
 		return prior, err
 	}
 
-	prior.Email = types.StringValue(member.Email)
+	prior.Email = types.StringValue(found.Email)
 
 	// The owner's roles can't be changed, so keep whatever the configuration
 	// last recorded. After an import nothing is recorded yet.
-	if !isOwner(member) || prior.Roles.IsNull() {
-		roles, diags := types.SetValueFrom(op.ctx, types.StringType, assignableRoles(member))
+	if !found.Owner || prior.Roles.IsNull() {
+		roles, diags := types.SetValueFrom(op.ctx, types.StringType, found.Roles)
 		if diags.HasError() {
 			return prior, diagsError(diags)
 		}
@@ -127,34 +107,13 @@ func readOrganizationMember(op *op, prior camundaOrganizationMemberData) (camund
 }
 
 func deleteOrganizationMember(op *op, prior camundaOrganizationMemberData) error {
-	email := prior.Email.ValueString()
-
-	member, err := op.client.GetMember(op.ctx, email)
-	if err != nil {
-		return err
-	}
-	if isOwner(member) {
+	err := op.client.DeleteMember(op.ctx, prior.Email.ValueString())
+	if errors.Is(err, errOwnerUnchangeable) {
 		op.Warn(
 			"Organization owner not removed",
-			fmt.Sprintf("%s is the organization owner, who can't be removed through the API. The member was removed from Terraform state only.", email),
+			fmt.Sprintf("%s is the organization owner, who can't be removed through the API. The member was removed from Terraform state only.", prior.Email.ValueString()),
 		)
 		return nil
 	}
-
-	return op.client.DeleteMember(op.ctx, email)
-}
-
-func isOwner(member *console.Member) bool {
-	return slices.Contains(member.Roles, console.ORGANIZATIONROLE_OWNER)
-}
-
-// assignableRoles returns the member's roles that the API can assign.
-func assignableRoles(member *console.Member) []string {
-	roles := []string{}
-	for _, role := range member.Roles {
-		if slices.Contains(assignableMemberRoles, string(role)) {
-			roles = append(roles, string(role))
-		}
-	}
-	return roles
+	return err
 }

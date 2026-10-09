@@ -37,3 +37,12 @@ type createdClusterClient struct {
 	ClientID string
 	Secret   string
 }
+
+// member is an organization member.
+type member struct {
+	Email string
+	// Roles holds only the roles the API can assign.
+	Roles []string
+	// Owner is set for the organization owner, whom the API can't change.
+	Owner bool
+}

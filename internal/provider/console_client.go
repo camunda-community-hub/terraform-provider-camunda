@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -313,23 +314,60 @@ func (c *consoleClient) DeleteSecret(ctx context.Context, clusterID, name string
 
 // Organization members
 
-// GetMember returns the member with the given email, or errNotFound.
-func (c *consoleClient) GetMember(ctx context.Context, email string) (*console.Member, error) {
+// errOwnerUnchangeable is returned (wrapped) when asked to change or remove
+// the organization owner, which the API doesn't allow.
+var errOwnerUnchangeable = errors.New("the organization owner's roles can't be changed and the owner can't be removed through the API")
+
+// assignableMemberRoles are the organization roles the API can assign. Other
+// roles a member may hold, such as owner, are never returned or sent.
+var assignableMemberRoles = []string{
+	string(console.ORGANIZATIONROLEADMIN_ADMIN),
+	string(console.ORGANIZATIONROLEOPERATIONSENGINEER_OPERATIONSENGINEER),
+	string(console.ORGANIZATIONROLETASKUSER_TASKUSER),
+	string(console.ORGANIZATIONROLEANALYST_ANALYST),
+	string(console.ORGANIZATIONROLEDEVELOPER_DEVELOPER),
+	string(console.ORGANIZATIONROLEVISITOR_VISITOR),
+}
+
+// GetMember returns the member with the given email, or errNotFound. Roles
+// holds only assignable roles; Owner reports the owner role.
+func (c *consoleClient) GetMember(ctx context.Context, email string) (*member, error) {
 	members, response, err := c.api.GetMembers(ctx).Execute()
 	if err != nil {
 		return nil, apiError(err, response)
 	}
 
-	for _, member := range members {
-		if member.Email == email {
-			return &member, nil
+	for _, listed := range members {
+		if listed.Email != email {
+			continue
 		}
+		found := &member{Email: listed.Email, Roles: []string{}}
+		for _, role := range listed.Roles {
+			if role == console.ORGANIZATIONROLE_OWNER {
+				found.Owner = true
+			}
+			if slices.Contains(assignableMemberRoles, string(role)) {
+				found.Roles = append(found.Roles, string(role))
+			}
+		}
+		return found, nil
 	}
 	return nil, fmt.Errorf("%w: organization member %q", errNotFound, email)
 }
 
-// SetMemberRoles invites the member if needed and replaces their roles.
+// SetMemberRoles invites the member if needed and replaces their roles, or
+// returns errOwnerUnchangeable for the owner.
 func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles []string) error {
+	existing, err := c.GetMember(ctx, email)
+	switch {
+	case errors.Is(err, errNotFound):
+		// Not a member yet; UpdateMembers invites them.
+	case err != nil:
+		return err
+	case existing.Owner:
+		return fmt.Errorf("%w: %s", errOwnerUnchangeable, email)
+	}
+
 	orgRoles := make([]console.AssignableOrganizationRoleType, 0, len(roles))
 	for _, name := range roles {
 		role, err := console.NewAssignableOrganizationRoleTypeFromValue(name)
@@ -345,7 +383,17 @@ func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles 
 	return apiError(err, response)
 }
 
+// DeleteMember removes the member, or returns errOwnerUnchangeable for the
+// owner and errNotFound when they aren't a member.
 func (c *consoleClient) DeleteMember(ctx context.Context, email string) error {
+	existing, err := c.GetMember(ctx, email)
+	if err != nil {
+		return err
+	}
+	if existing.Owner {
+		return fmt.Errorf("%w: %s", errOwnerUnchangeable, email)
+	}
+
 	response, err := c.api.DeleteMember(ctx, email).Execute()
 	return apiError(err, response)
 }

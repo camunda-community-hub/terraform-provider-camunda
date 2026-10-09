@@ -155,3 +155,43 @@ func TestConsoleClientReadsTheDeprecatedIPWhitelist(t *testing.T) {
 		t.Fatalf("expected the deprecated allowlist, got %v, %v", entries, err)
 	}
 }
+
+// serveOwner makes the fake Console list one owner and fail the test on any
+// attempt to change members.
+func serveOwner(t *testing.T, f *fakeConsole) {
+	f.mux.HandleFunc("GET /members", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, []console.Member{{
+			Email: "owner@example.com",
+			Roles: []console.OrganizationRole{console.ORGANIZATIONROLE_OWNER, "admin", "modeler"},
+		}})
+	})
+	for _, route := range []string{"POST /members/{email}", "DELETE /members/{email}"} {
+		f.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		})
+	}
+}
+
+func TestConsoleClientGetMemberKeepsOnlyAssignableRoles(t *testing.T) {
+	f := newFakeConsole(t)
+	serveOwner(t, f)
+
+	found, err := f.client(t).GetMember(context.Background(), "owner@example.com")
+
+	if err != nil || !found.Owner || len(found.Roles) != 1 || found.Roles[0] != "admin" {
+		t.Fatalf("expected the owner with only the admin role, got %+v, %v", found, err)
+	}
+}
+
+func TestConsoleClientRefusesToChangeTheOwner(t *testing.T) {
+	f := newFakeConsole(t)
+	serveOwner(t, f)
+	client := f.client(t)
+
+	if err := client.SetMemberRoles(context.Background(), "owner@example.com", []string{"analyst"}); !errors.Is(err, errOwnerUnchangeable) {
+		t.Fatalf("SetMemberRoles: expected errOwnerUnchangeable, got %v", err)
+	}
+	if err := client.DeleteMember(context.Background(), "owner@example.com"); !errors.Is(err, errOwnerUnchangeable) {
+		t.Fatalf("DeleteMember: expected errOwnerUnchangeable, got %v", err)
+	}
+}
