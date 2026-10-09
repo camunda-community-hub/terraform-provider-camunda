@@ -36,28 +36,40 @@ func TestCamundaClusterReplaceAttributes(t *testing.T) {
 		Description: types.StringNull(),
 	}
 
+	withoutAutoUpdate := func(d *camundaClusterData) { d.AutoUpdate = types.BoolValue(false) }
+
 	tests := map[string]struct {
+		attr        string
+		prepare     func(d *camundaClusterData)
 		change      func(d *camundaClusterData)
 		wantReplace bool
 	}{
-		"plan_type":   {func(d *camundaClusterData) { d.PlanType = types.StringValue("plan-2") }, true},
-		"generation":  {func(d *camundaClusterData) { d.Generation = types.StringValue("gen-2") }, true},
-		"auto_update": {func(d *camundaClusterData) { d.AutoUpdate = types.BoolValue(false) }, true},
-		"channel":     {func(d *camundaClusterData) { d.Channel = types.StringValue("channel-2") }, true},
-		"region":      {func(d *camundaClusterData) { d.Region = types.StringValue("region-2") }, true},
-		"name":        {func(d *camundaClusterData) { d.Name = types.StringValue("new") }, false},
-		"description": {func(d *camundaClusterData) { d.Description = types.StringValue("new") }, false},
+		"plan_type":   {"plan_type", nil, func(d *camundaClusterData) { d.PlanType = types.StringValue("plan-2") }, true},
+		"auto_update": {"auto_update", nil, func(d *camundaClusterData) { d.AutoUpdate = types.BoolValue(false) }, true},
+		"channel":     {"channel", nil, func(d *camundaClusterData) { d.Channel = types.StringValue("channel-2") }, true},
+		"region":      {"region", nil, func(d *camundaClusterData) { d.Region = types.StringValue("region-2") }, true},
+		"name":        {"name", nil, func(d *camundaClusterData) { d.Name = types.StringValue("new") }, false},
+		"description": {"description", nil, func(d *camundaClusterData) { d.Description = types.StringValue("new") }, false},
+		// With auto_update Camunda owns the generation, so changing it in the
+		// configuration must not recreate the cluster.
+		"generation with auto_update":    {"generation", nil, func(d *camundaClusterData) { d.Generation = types.StringValue("gen-2") }, false},
+		"generation without auto_update": {"generation", withoutAutoUpdate, func(d *camundaClusterData) { d.Generation = types.StringValue("gen-2") }, true},
 	}
 
-	for attr, tc := range tests {
-		t.Run(attr, func(t *testing.T) {
-			planData := base
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			attr := tc.attr
+			stateData := base
+			if tc.prepare != nil {
+				tc.prepare(&stateData)
+			}
+			planData := stateData
 			tc.change(&planData)
 
 			state := tfsdk.State{Schema: s, Raw: nullRaw}
 			plan := tfsdk.Plan{Schema: s, Raw: nullRaw}
 			config := tfsdk.Config{Schema: s, Raw: nullRaw}
-			if diags := state.Set(ctx, &base); diags.HasError() {
+			if diags := state.Set(ctx, &stateData); diags.HasError() {
 				t.Fatal(diags)
 			}
 			if diags := plan.Set(ctx, &planData); diags.HasError() {

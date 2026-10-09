@@ -2,12 +2,12 @@
 page_title: "camunda_cluster Resource - terraform-provider-camunda"
 subcategory: ""
 description: |-
-    Manage a cluster on Camunda SaaS. Only name and description can be updated in place. Changing plan_type, generation, auto_update, channel or region destroys and recreates the cluster, deleting all data of the cluster. Use lifecycle { prevent_destroy = true } to guard against this.
+    Manage a cluster on Camunda SaaS. Only name and description can be updated in place. Changing plan_type, generation (unless auto_update is enabled), auto_update, channel or region destroys and recreates the cluster, deleting all data of the cluster. Use lifecycle { prevent_destroy = true } to guard against this.
 ---
 
 # camunda_cluster (Resource)
 
-Manage a cluster on Camunda SaaS. Only `name` and `description` can be updated in place. Changing `plan_type`, `generation`, `auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. Use `lifecycle { prevent_destroy = true }` to guard against this.
+Manage a cluster on Camunda SaaS. Only `name` and `description` can be updated in place. Changing `plan_type`, `generation` (unless `auto_update` is enabled), `auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. Use `lifecycle { prevent_destroy = true }` to guard against this.
 
 This creates a new Camunda cluster to which a new workflow can be deployed.
 
@@ -58,7 +58,7 @@ resource "camunda_cluster" "test" {
 ### Required
 
 - `channel` (String) Channel
-- `generation` (String) Generation. Changing it replaces the cluster.
+- `generation` (String) Generation the cluster is created with. Changing it replaces the cluster, unless `auto_update` is enabled: Camunda then upgrades the cluster over time; see `current_generation` for the generation it actually runs.
 - `name` (String) The name of the cluster
 - `plan_type` (String) Plan type. Changing it replaces the cluster.
 - `region` (String) Region
@@ -70,4 +70,14 @@ resource "camunda_cluster" "test" {
 
 ### Read-Only
 
+- `current_generation` (String) Generation the cluster currently runs.
 - `id` (String) Cluster ID
+
+## Import
+
+Import is supported using the following syntax:
+
+```shell
+# Import a cluster by its ID.
+terraform import camunda_cluster.test <cluster_id>
+```

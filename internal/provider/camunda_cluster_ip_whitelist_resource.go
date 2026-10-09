@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -14,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ resource.Resource = &CamundaClusterIPWhiteListResource{}
@@ -32,7 +32,7 @@ type ipWhitelistModel struct {
 }
 
 type CamundaClusterIPWhiteListResource struct {
-	provider *CamundaCloudProvider
+	client *consoleClient
 }
 
 func NewCamundaClusterIPWhitelistResource() resource.Resource {
@@ -56,6 +56,7 @@ func (r *CamundaClusterIPWhiteListResource) Schema(ctx context.Context, req reso
 			"cluster_id": schema.StringAttribute{
 				MarkdownDescription: "Cluster ID",
 				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -88,18 +89,9 @@ func (r *CamundaClusterIPWhiteListResource) Configure(ctx context.Context, req r
 		return
 	}
 
-	provider, ok := req.ProviderData.(*CamundaCloudProvider)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *incidentio.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.provider = provider
+	client, diags := consoleClientFromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	r.client = client
 }
 
 func (r *CamundaClusterIPWhiteListResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -115,7 +107,7 @@ func (r *CamundaClusterIPWhiteListResource) Create(ctx context.Context, req reso
 	clusterId := data.ClusterID.ValueString()
 
 	ipWhitelistPath := path.Root("ip_whitelist")
-	err := r.configureIPWhitelisting(ctx, data, clusterId)
+	err := r.client.SetIPAllowlist(ctx, clusterId, ipAllowlistFromState(data))
 	if err != nil {
 		resp.Diagnostics.AddAttributeError(
 			ipWhitelistPath,
@@ -148,10 +140,8 @@ func (r *CamundaClusterIPWhiteListResource) Read(ctx context.Context, req resour
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	cluster, response, err := r.provider.client.DefaultAPI.GetCluster(ctx, data.Id.ValueString()).Execute()
-	if isNotFound(err, response) {
+	allowlist, err := r.client.GetIPAllowlist(ctx, data.Id.ValueString())
+	if errors.Is(err, errNotFound) {
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -159,14 +149,14 @@ func (r *CamundaClusterIPWhiteListResource) Read(ctx context.Context, req resour
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}
 
 	ipWhitelist := []ipWhitelistModel{}
 
-	for _, item := range cluster.Ipwhitelist {
+	for _, item := range allowlist {
 		ipDesc := ipWhitelistModel{
 			IP:          types.StringValue(item.Ip),
 			Description: types.StringValue(item.Description),
@@ -175,11 +165,8 @@ func (r *CamundaClusterIPWhiteListResource) Read(ctx context.Context, req resour
 	}
 
 	data.IPWhitelist = ipWhitelist
-
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	// An import only sets the id, which is the cluster ID.
+	data.ClusterID = data.Id
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -199,10 +186,10 @@ func (r *CamundaClusterIPWhiteListResource) Update(ctx context.Context, req reso
 		return
 	}
 
-	clusterId := data.Id.ValueString()
+	clusterId := data.ClusterID.ValueString()
 	ipWhitelistPath := path.Root("ip_whitelist")
 
-	err := r.configureIPWhitelisting(ctx, data, clusterId)
+	err := r.client.SetIPAllowlist(ctx, clusterId, ipAllowlistFromState(data))
 	if err != nil {
 		resp.Diagnostics.AddAttributeError(
 			ipWhitelistPath,
@@ -226,14 +213,12 @@ func (r *CamundaClusterIPWhiteListResource) Delete(ctx context.Context, req reso
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-	clusterId := data.ClusterID.ValueString()
-
-	err := r.configureIPWhitelisting(ctx, data, clusterId)
-	if err != nil {
+	// Clearing the allowlist removes all IP restrictions from the cluster.
+	err := r.client.SetIPAllowlist(ctx, data.ClusterID.ValueString(), nil)
+	if ignoreNotFound(err) != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to remove IP whitelisting from cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to remove IP whitelisting from cluster ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}
@@ -243,38 +228,13 @@ func (r *CamundaClusterIPWhiteListResource) ImportState(ctx context.Context, req
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func (r *CamundaClusterIPWhiteListResource) configureIPWhitelisting(ctx context.Context, data camundaClusterIPWhitelistData, clusterID string) error {
-	ipWhitelist := []console.ClusterIpallowlistInner{}
+func ipAllowlistFromState(data camundaClusterIPWhitelistData) []console.ClusterIpallowlistInner {
+	entries := []console.ClusterIpallowlistInner{}
 	for _, item := range data.IPWhitelist {
-		ipWhitelist = append(ipWhitelist, *console.NewClusterIpallowlistInner(
+		entries = append(entries, *console.NewClusterIpallowlistInner(
 			item.Description.ValueString(),
 			item.IP.ValueString(),
 		))
 	}
-
-	newIPWhitelistBody := console.IpWhiteListBody{
-		Ipwhitelist: ipWhitelist,
-	}
-
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	response, err := r.provider.client.
-		DefaultAPI.
-		UpdateIpWhitelist(ctx, clusterID).
-		IpWhiteListBody(newIPWhitelistBody).
-		Execute()
-
-	if err != nil {
-		return fmt.Errorf("unable to create cluster, got error: %s", formatClientError(err))
-	}
-
-	if response.StatusCode != 204 {
-		return fmt.Errorf("error while configuring IP whitelisting, expected HTTP 200, got: %d", response.StatusCode)
-	}
-
-	tflog.Info(ctx, "IP Whitelisting configured", map[string]interface{}{
-		"clusterID": data.Id,
-	})
-
-	return nil
+	return entries
 }

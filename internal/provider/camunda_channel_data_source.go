@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -31,7 +30,7 @@ type channelDataSourceData struct {
 }
 
 type CamundaChannelDataSource struct {
-	provider *CamundaCloudProvider
+	client *consoleClient
 }
 
 func NewCamundaChannelDataSource() datasource.DataSource {
@@ -92,18 +91,9 @@ func (d *CamundaChannelDataSource) Configure(ctx context.Context, req datasource
 		return
 	}
 
-	provider, ok := req.ProviderData.(*CamundaCloudProvider)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *CamundaCloudProvider, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.provider = provider
+	client, diags := consoleClientFromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	d.client = client
 }
 
 type Generation struct {
@@ -121,12 +111,11 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, d.provider.accessToken)
-	params, _, err := d.provider.client.DefaultAPI.GetParameters(ctx).Execute()
+	params, err := d.client.GetParameters(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read parameters, got error: %s", formatClientError(err)),
+			fmt.Sprintf("Unable to read parameters, got error: %s", err),
 		)
 		return
 	}

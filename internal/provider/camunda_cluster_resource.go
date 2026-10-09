@@ -2,8 +2,8 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
 var _ resource.Resource = &CamundaClusterResource{}
@@ -32,11 +31,12 @@ type camundaClusterData struct {
 	Generation types.String `tfsdk:"generation"`
 	AutoUpdate types.Bool   `tfsdk:"auto_update"`
 
-	Description types.String `tfsdk:"description"`
+	Description       types.String `tfsdk:"description"`
+	CurrentGeneration types.String `tfsdk:"current_generation"`
 }
 
 type CamundaClusterResource struct {
-	provider *CamundaCloudProvider
+	client *consoleClient
 }
 
 func NewCamundaClusterResource() resource.Resource {
@@ -50,9 +50,9 @@ func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.Meta
 func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manage a cluster on Camunda SaaS. " +
-			"Only `name` and `description` can be updated in place. Changing `plan_type`, `generation`, " +
-			"`auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. " +
-			"Use `lifecycle { prevent_destroy = true }` to guard against this.",
+			"Only `name` and `description` can be updated in place. Changing `plan_type`, `generation` " +
+			"(unless `auto_update` is enabled), `auto_update`, `channel` or `region` destroys and recreates the cluster, " +
+			"**deleting all data of the cluster**. Use `lifecycle { prevent_destroy = true }` to guard against this.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -80,9 +80,20 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"generation": schema.StringAttribute{
-				MarkdownDescription: "Generation. Changing it replaces the cluster.",
+				MarkdownDescription: "Generation the cluster is created with. Changing it replaces the cluster, unless `auto_update` is enabled: Camunda then upgrades the cluster over time; see `current_generation` for the generation it actually runs.",
 				Required:            true,
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplaceIf(
+						generationChangeReplaces,
+						"Changing the generation replaces the cluster unless auto_update is enabled.",
+						"Changing the generation replaces the cluster unless `auto_update` is enabled.",
+					),
+				},
+			},
+			"current_generation": schema.StringAttribute{
+				MarkdownDescription: "Generation the cluster currently runs.",
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"auto_update": schema.BoolAttribute{
 				MarkdownDescription: "Auto Update. Changing it replaces the cluster.",
@@ -106,18 +117,9 @@ func (r *CamundaClusterResource) Configure(ctx context.Context, req resource.Con
 		return
 	}
 
-	provider, ok := req.ProviderData.(*CamundaCloudProvider)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *incidentio.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.provider = provider
+	client, diags := consoleClientFromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	r.client = client
 }
 
 func (r *CamundaClusterResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -130,7 +132,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	newClusterConfiguration := console.CreateClusterRequest{
+	clusterId, err := r.client.CreateCluster(ctx, console.CreateClusterRequest{
 		Name:         data.Name.ValueString(),
 		PlanTypeId:   data.PlanType.ValueString(),
 		ChannelId:    data.Channel.ValueString(),
@@ -138,24 +140,17 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		RegionId:     data.Region.ValueString(),
 		AutoUpdate:   data.AutoUpdate.ValueBoolPointer(),
 		Description:  data.Description.ValueStringPointer(),
-	}
-
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	inline, _, err := r.provider.client.DefaultAPI.CreateCluster(ctx).
-		CreateClusterRequest(newClusterConfiguration).
-		Execute()
-
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster",
-			fmt.Sprintf("Unable to create cluster, got error: %s", formatClientError(err)),
+			fmt.Sprintf("Unable to create cluster, got error: %s", err),
 		)
 		return
 	}
 
-	clusterId := inline.GetClusterId()
 	data.Id = types.StringValue(clusterId)
+	data.CurrentGeneration = data.Generation
 
 	tflog.Info(ctx, "Camunda cluster created", map[string]interface{}{
 		"clusterID": data.Id,
@@ -165,52 +160,25 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(diags...)
 
 	// Creating a cluster takes some time, wait until it's marked healthy.
-	createState := &retry.StateChangeConf{
-		// The cluster states that we need to keep waiting on
-		Pending: []string{
-			string(console.CLUSTERCOMPONENTSTATUS_CREATING),
-			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
-		},
-
-		// The cluster states that we would like to reach
-		Target: []string{
-			string(console.CLUSTERCOMPONENTSTATUS_HEALTHY),
-		},
-
-		// How many times the target state has to be reached to continue.
-		ContinuousTargetOccurence: 2,
-
-		Refresh: func() (interface{}, string, error) {
-			cluster, _, err := r.provider.client.DefaultAPI.
-				GetCluster(ctx, clusterId).
-				Execute()
-
-			if err != nil {
-				return nil, "", err
-			}
-
-			tflog.Info(ctx, "Camunda cluster status", map[string]interface{}{
-				"clusterID":     cluster.Uuid,
-				"clusterStatus": cluster.Status.Ready,
-			})
-
-			return cluster, string(cluster.Status.Ready), nil
-		},
-
-		Timeout:    30 * time.Minute,
-		Delay:      10 * time.Second,
-		MinTimeout: 5 * time.Second,
-	}
-
-	_, err = createState.WaitForStateContext(ctx)
-
-	if err != nil {
+	if err := r.client.WaitClusterHealthy(ctx, clusterId); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster",
 			fmt.Sprintf("Cluster %s never got healthy; got error: %s", clusterId, err),
 		)
 		return
 	}
+
+	cluster, err := r.client.GetCluster(ctx, clusterId)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", clusterId, err),
+		)
+		return
+	}
+	data.setFromAPI(cluster)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -223,10 +191,8 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	cluster, response, err := r.provider.client.DefaultAPI.GetCluster(ctx, data.Id.ValueString()).Execute()
-	if isNotFound(err, response) {
+	cluster, err := r.client.GetCluster(ctx, data.Id.ValueString())
+	if errors.Is(err, errNotFound) {
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -234,22 +200,12 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}
 
-	data.Name = types.StringValue(cluster.Name)
-	data.Channel = types.StringValue(cluster.Channel.Uuid)
-	data.Region = types.StringValue(cluster.Region.Uuid)
-	data.PlanType = types.StringValue(cluster.PlanType.Uuid)
-	data.Generation = types.StringValue(cluster.Generation.Uuid)
-	data.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
-	if cluster.Description == nil || *cluster.Description == "" {
-		data.Description = types.StringNull()
-	} else {
-		data.Description = types.StringPointerValue(cluster.Description)
-	}
+	data.setFromAPI(cluster)
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -265,24 +221,14 @@ func (r *CamundaClusterResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	// plan_type, generation and auto_update cannot be updated in place and force replacement,
-	// so only name and description can differ here.
+	// Every other change forces replacement, and a generation change while
+	// auto_update is on needs no API call.
 	if !plan.Name.Equal(state.Name) || !plan.Description.Equal(state.Description) {
-		ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-		// An empty description clears it; omitting the field would leave it unchanged.
-		description := plan.Description.ValueString()
-
-		_, err := r.provider.client.DefaultAPI.UpdateCluster(ctx, state.Id.ValueString()).
-			UpdateClusterBody(console.UpdateClusterBody{
-				Name:        plan.Name.ValueStringPointer(),
-				Description: &description,
-			}).
-			Execute()
+		err := r.client.UpdateCluster(ctx, state.Id.ValueString(), plan.Name.ValueString(), plan.Description.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Client Error",
-				fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), formatClientError(err)),
+				fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), err),
 			)
 			return
 		}
@@ -301,13 +247,11 @@ func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	_, err := r.provider.client.DefaultAPI.DeleteCluster(ctx, data.Id.ValueString()).Execute()
+	err := r.client.DeleteCluster(ctx, data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}
@@ -315,4 +259,37 @@ func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.Delete
 
 func (r *CamundaClusterResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// generationChangeReplaces lets the generation change in place while
+// auto_update is on: Camunda then moves the cluster to newer generations
+// itself, and the configured generation only records where it started.
+func generationChangeReplaces(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	var stateAutoUpdate, planAutoUpdate types.Bool
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("auto_update"), &stateAutoUpdate)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("auto_update"), &planAutoUpdate)...)
+
+	resp.RequiresReplace = !stateAutoUpdate.ValueBool() || !planAutoUpdate.ValueBool()
+}
+
+// setFromAPI copies what the Console reports about the cluster into the model.
+func (d *camundaClusterData) setFromAPI(cluster *console.Cluster) {
+	d.Name = types.StringValue(cluster.Name)
+	d.Channel = types.StringValue(cluster.Channel.Uuid)
+	d.Region = types.StringValue(cluster.Region.Uuid)
+	d.PlanType = types.StringValue(cluster.PlanType.Uuid)
+	d.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
+	if cluster.Description == nil || *cluster.Description == "" {
+		d.Description = types.StringNull()
+	} else {
+		d.Description = types.StringPointerValue(cluster.Description)
+	}
+	d.CurrentGeneration = types.StringValue(cluster.Generation.Uuid)
+
+	// With auto_update the server moves the cluster to newer generations, so
+	// the configured generation is only where it started; keep it instead of
+	// reporting a diff the user can't apply.
+	if d.Generation.IsNull() || !cluster.AutoUpdate {
+		d.Generation = d.CurrentGeneration
+	}
 }

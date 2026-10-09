@@ -1,15 +1,32 @@
 package provider
 
-// testAccProtoV6ProviderFactories are used to instantiate a provider during
-// acceptance testing. The factory function will be invoked for every Terraform
-// CLI command executed to create a provider server to which the CLI can
-// reattach.
-// var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-// 	"camunda": providerserver.NewProtocol6WithError(New("test")()),
-// }
+import (
+	"fmt"
+)
 
-// func testAccPreCheck(t *testing.T) {
-// 	// You can add code here to run prior to any test case execution, for example assertions
-// 	// about the appropriate environment variables being set are common to see in a pre-check
-// 	// function.
-// }
+// clusterConfig is a cluster resource named "test" built from the fake's
+// parameters, looked up through the data sources.
+func clusterConfig(f *fakeConsole, name, planType string, autoUpdate bool) string {
+	return f.providerConfig() + fmt.Sprintf(`
+data "camunda_channel" "stable" {
+  name = %q
+}
+
+data "camunda_region" "belgium" {
+  name = %q
+}
+
+data "camunda_cluster_plan_type" "plan" {
+  name = %q
+}
+
+resource "camunda_cluster" "test" {
+  name        = %q
+  channel     = data.camunda_channel.stable.id
+  region      = data.camunda_region.belgium.id
+  plan_type   = data.camunda_cluster_plan_type.plan.id
+  generation  = data.camunda_channel.stable.default_generation_id
+  auto_update = %t
+}
+`, fakeChannelName, fakeRegionName, planType, name, autoUpdate)
+}

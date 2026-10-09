@@ -26,3 +26,14 @@ resource "camunda_organization_member" "example" {
 
 - `email` (String) The email of the member
 - `roles` (Set of String) The roles of this member in the organization. Must be one of: `admin`, `analyst`, `developer`, `operationsengineer`, `taskuser`, or `visitor`.
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# Import an organization member by email.
+terraform import camunda_organization_member.example <email>
+```
