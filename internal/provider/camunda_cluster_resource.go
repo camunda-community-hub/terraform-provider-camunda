@@ -2,8 +2,8 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
 var _ resource.Resource = &CamundaClusterResource{}
@@ -31,7 +30,7 @@ type camundaClusterData struct {
 }
 
 type CamundaClusterResource struct {
-	provider *CamundaCloudProvider
+	client *consoleClient
 }
 
 func NewCamundaClusterResource() resource.Resource {
@@ -90,18 +89,9 @@ func (r *CamundaClusterResource) Configure(ctx context.Context, req resource.Con
 		return
 	}
 
-	provider, ok := req.ProviderData.(*CamundaCloudProvider)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *incidentio.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.provider = provider
+	client, diags := consoleClientFromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	r.client = client
 }
 
 func (r *CamundaClusterResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -114,30 +104,22 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	newClusterConfiguration := console.CreateClusterRequest{
+	clusterId, err := r.client.CreateCluster(ctx, console.CreateClusterRequest{
 		Name:         data.Name.ValueString(),
 		PlanTypeId:   data.PlanType.ValueString(),
 		ChannelId:    data.Channel.ValueString(),
 		GenerationId: data.Generation.ValueString(),
 		RegionId:     data.Region.ValueString(),
 		AutoUpdate:   data.AutoUpdate.ValueBoolPointer(),
-	}
-
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	inline, _, err := r.provider.client.DefaultAPI.CreateCluster(ctx).
-		CreateClusterRequest(newClusterConfiguration).
-		Execute()
-
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster",
-			fmt.Sprintf("Unable to create cluster, got error: %s", formatClientError(err)),
+			fmt.Sprintf("Unable to create cluster, got error: %s", err),
 		)
 		return
 	}
 
-	clusterId := inline.GetClusterId()
 	data.Id = types.StringValue(clusterId)
 
 	tflog.Info(ctx, "Camunda cluster created", map[string]interface{}{
@@ -148,46 +130,7 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(diags...)
 
 	// Creating a cluster takes some time, wait until it's marked healthy.
-	createState := &retry.StateChangeConf{
-		// The cluster states that we need to keep waiting on
-		Pending: []string{
-			string(console.CLUSTERCOMPONENTSTATUS_CREATING),
-			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
-		},
-
-		// The cluster states that we would like to reach
-		Target: []string{
-			string(console.CLUSTERCOMPONENTSTATUS_HEALTHY),
-		},
-
-		// How many times the target state has to be reached to continue.
-		ContinuousTargetOccurence: 2,
-
-		Refresh: func() (interface{}, string, error) {
-			cluster, _, err := r.provider.client.DefaultAPI.
-				GetCluster(ctx, clusterId).
-				Execute()
-
-			if err != nil {
-				return nil, "", err
-			}
-
-			tflog.Info(ctx, "Camunda cluster status", map[string]interface{}{
-				"clusterID":     cluster.Uuid,
-				"clusterStatus": cluster.Status.Ready,
-			})
-
-			return cluster, string(cluster.Status.Ready), nil
-		},
-
-		Timeout:    30 * time.Minute,
-		Delay:      10 * time.Second,
-		MinTimeout: 5 * time.Second,
-	}
-
-	_, err = createState.WaitForStateContext(ctx)
-
-	if err != nil {
+	if err := r.client.WaitClusterHealthy(ctx, clusterId); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster",
 			fmt.Sprintf("Cluster %s never got healthy; got error: %s", clusterId, err),
@@ -206,10 +149,8 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	cluster, response, err := r.provider.client.DefaultAPI.GetCluster(ctx, data.Id.ValueString()).Execute()
-	if isNotFound(err, response) {
+	cluster, err := r.client.GetCluster(ctx, data.Id.ValueString())
+	if errors.Is(err, errNotFound) {
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -217,7 +158,7 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}
@@ -253,15 +194,11 @@ func (r *CamundaClusterResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	_, err := r.provider.client.DefaultAPI.UpdateCluster(ctx, state.Id.ValueString()).
-		UpdateClusterBody(console.UpdateClusterBody{Name: plan.Name.ValueStringPointer()}).
-		Execute()
+	err := r.client.RenameCluster(ctx, state.Id.ValueString(), plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), err),
 		)
 		return
 	}
@@ -279,13 +216,11 @@ func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	_, err := r.provider.client.DefaultAPI.DeleteCluster(ctx, data.Id.ValueString()).Execute()
+	err := r.client.DeleteCluster(ctx, data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}

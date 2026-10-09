@@ -5,24 +5,19 @@ import (
 	"fmt"
 	"net/url"
 
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"golang.org/x/oauth2/clientcredentials"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
 var _ provider.Provider = &CamundaCloudProvider{}
 
-// CamundaCloudProvider satisfies the CamundaCloudProvider.Provider interface and usually is included
-// with all Resource and DataSource implementations.
-type CamundaCloudProvider struct {
-	client      *console.APIClient
-	accessToken string
-}
+// CamundaCloudProvider satisfies the provider.Provider interface. Its Configure
+// hands a *consoleClient to every resource and data source.
+type CamundaCloudProvider struct{}
 
 // providerData can be used to store data from the Terraform configuration.
 type providerData struct {
@@ -88,12 +83,17 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 		return
 	}
 
-	consoleApiUrl := "https://api.cloud.camunda.io"
+	apiURL := "https://api.cloud.camunda.io"
 	if !data.ApiUrl.IsNull() {
-		consoleApiUrl = data.ApiUrl.ValueString()
+		apiURL = data.ApiUrl.ValueString()
 	}
 
-	apiUrl, err := url.Parse(consoleApiUrl)
+	tokenURL := "https://login.cloud.camunda.io/oauth/token"
+	if !data.TokenUrl.IsNull() {
+		tokenURL = data.TokenUrl.ValueString()
+	}
+
+	parsedAPIURL, err := url.Parse(apiURL)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unexpected Provider Error",
@@ -102,45 +102,26 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 		return
 	}
 
-	tokenUrl := "https://login.cloud.camunda.io/oauth/token"
-	if !data.TokenUrl.IsNull() {
-		tokenUrl = data.TokenUrl.ValueString()
-	}
-
-	audience := apiUrl.Host
+	audience := parsedAPIURL.Host
 	if !data.Audience.IsNull() {
 		audience = data.Audience.ValueString()
 	}
 
-	config := clientcredentials.Config{
+	client, err := newConsoleClient(ctx, consoleClientConfig{
+		APIURL:       apiURL,
+		TokenURL:     tokenURL,
+		Audience:     audience,
 		ClientID:     data.ClientID.ValueString(),
 		ClientSecret: data.ClientSecret.ValueString(),
-		TokenURL:     tokenUrl,
-		EndpointParams: url.Values{
-			"audience": []string{audience},
-		},
-	}
-
-	token, err := config.Token(ctx)
+		Debug:        data.Debug.ValueBool(),
+	})
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unexpected Provider Error",
-			fmt.Sprintf("Unable to get token: %s", formatClientError(err)),
-		)
+		resp.Diagnostics.AddError("Unexpected Provider Error", err.Error())
 		return
 	}
 
-	p.accessToken = token.AccessToken
-
-	cfg := console.NewConfiguration()
-	cfg.Scheme = apiUrl.Scheme
-	cfg.Host = apiUrl.Host
-	cfg.Debug = data.Debug.ValueBool()
-	client := console.NewAPIClient(cfg)
-	p.client = client
-
-	resp.DataSourceData = p
-	resp.ResourceData = p
+	resp.DataSourceData = client
+	resp.ResourceData = client
 }
 
 func (p *CamundaCloudProvider) Resources(ctx context.Context) []func() resource.Resource {

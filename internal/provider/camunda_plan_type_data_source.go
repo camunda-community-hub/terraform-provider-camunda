@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -18,7 +17,7 @@ type clusterPlanTypeDataSourceData struct {
 }
 
 type CamundaClusterPlanTypeDataSource struct {
-	provider *CamundaCloudProvider
+	client *consoleClient
 }
 
 func NewCamundaClusterPlanTypeDataSource() datasource.DataSource {
@@ -52,18 +51,9 @@ func (d *CamundaClusterPlanTypeDataSource) Configure(ctx context.Context, req da
 		return
 	}
 
-	provider, ok := req.ProviderData.(*CamundaCloudProvider)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *CamundaCloudProvider Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.provider = provider
+	client, diags := consoleClientFromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	d.client = client
 }
 
 func (d *CamundaClusterPlanTypeDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -76,12 +66,11 @@ func (d *CamundaClusterPlanTypeDataSource) Read(ctx context.Context, req datasou
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, d.provider.accessToken)
-	params, _, err := d.provider.client.DefaultAPI.GetParameters(ctx).Execute()
+	params, err := d.client.GetParameters(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read parameters, got error: %s", formatClientError(err)),
+			fmt.Sprintf("Unable to read parameters, got error: %s", err),
 		)
 		return
 	}

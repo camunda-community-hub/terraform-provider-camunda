@@ -2,11 +2,13 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -26,7 +28,7 @@ type camundaOrganizationMemberData struct {
 }
 
 type CamundaOrganizationMemberResource struct {
-	provider *CamundaCloudProvider
+	client *consoleClient
 }
 
 func NewCamundaOrganizationMemberResource() resource.Resource {
@@ -74,18 +76,9 @@ func (r *CamundaOrganizationMemberResource) Configure(ctx context.Context, req r
 		return
 	}
 
-	provider, ok := req.ProviderData.(*CamundaCloudProvider)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *incidentio.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.provider = provider
+	client, diags := consoleClientFromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	r.client = client
 }
 
 func (r *CamundaOrganizationMemberResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -98,13 +91,18 @@ func (r *CamundaOrganizationMemberResource) Create(ctx context.Context, req reso
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-	err := setMember(ctx, *r.provider.client, data.Email, data.Roles)
+	roles, diags := memberRoles(ctx, data.Roles)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := r.client.SetMemberRoles(ctx, data.Email.ValueString(), roles)
 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to add organization member",
-			fmt.Sprintf("Unable to add organization member, got error: %s", formatClientError(err)),
+			fmt.Sprintf("Unable to add organization member, got error: %s", err),
 		)
 		return
 	}
@@ -128,42 +126,35 @@ func (r *CamundaOrganizationMemberResource) Read(ctx context.Context, req resour
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-	members, _, err := r.provider.client.DefaultAPI.GetMembers(ctx).Execute()
+	member, err := r.client.GetMember(ctx, data.Email.ValueString())
+	if errors.Is(err, errNotFound) {
+		tflog.Info(ctx, "Member not found", map[string]interface{}{
+			"email": data.Email,
+		})
+		resp.State.RemoveResource(ctx)
+		return
+	}
 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to get organization members, got error: %s", formatClientError(err)),
+			fmt.Sprintf("Unable to get organization members, got error: %s", err),
 		)
 		return
 	}
 
-	searchFor := data.Email.ValueString()
+	roles, diags := types.SetValueFrom(ctx, types.StringType, member.Roles)
+	resp.Diagnostics.Append(diags...)
 
-	for _, member := range members {
-		if member.Email == searchFor {
-			roles, diags := types.SetValueFrom(ctx, types.StringType, member.Roles)
-			resp.Diagnostics.Append(diags...)
-
-			if resp.Diagnostics.HasError() {
-				return
-			}
-
-			data.Email = types.StringValue(member.Email)
-			data.Roles = roles
-
-			diags = resp.State.Set(ctx, &data)
-			resp.Diagnostics.Append(diags...)
-			return
-		}
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	tflog.Info(ctx, "Member not found", map[string]interface{}{
-		"email": data.Email,
-	})
+	data.Email = types.StringValue(member.Email)
+	data.Roles = roles
 
-	resp.State.RemoveResource(ctx)
+	diags = resp.State.Set(ctx, &data)
+	resp.Diagnostics.Append(diags...)
 }
 
 func (r *CamundaOrganizationMemberResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -176,13 +167,18 @@ func (r *CamundaOrganizationMemberResource) Update(ctx context.Context, req reso
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-	err := setMember(ctx, *r.provider.client, data.Email, data.Roles)
+	roles, diags := memberRoles(ctx, data.Roles)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := r.client.SetMemberRoles(ctx, data.Email.ValueString(), roles)
 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to update organization member",
-			fmt.Sprintf("Unable to update organization member, got error: %s", formatClientError(err)),
+			fmt.Sprintf("Unable to update organization member, got error: %s", err),
 		)
 		return
 	}
@@ -202,13 +198,12 @@ func (r *CamundaOrganizationMemberResource) Delete(ctx context.Context, req reso
 	}
 
 	email := data.Email.ValueString()
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
 
-	_, err := r.provider.client.DefaultAPI.DeleteMember(ctx, email).Execute()
+	err := r.client.DeleteMember(ctx, email)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete member '%s', got error: %s", email, formatClientError(err)),
+			fmt.Sprintf("Unable to delete member '%s', got error: %s", email, err),
 		)
 		return
 	}
@@ -218,34 +213,9 @@ func (r *CamundaOrganizationMemberResource) ImportState(ctx context.Context, req
 	resource.ImportStatePassthroughID(ctx, path.Root("email"), req, resp)
 }
 
-
-func setMember(ctx context.Context, client console.APIClient, email types.String, roles types.Set) error {
-	orgRoles := make([]console.AssignableOrganizationRoleType, 0)
-
-	for _, r := range roles.Elements() {
-		var role console.AssignableOrganizationRoleType
-
-		roleName := r.String()
-		err := role.UnmarshalJSON([]byte(roleName))
-
-		if err != nil {
-			return fmt.Errorf("unable to read role: %w", err)
-		}
-
-		orgRoles = append(orgRoles, role)
-	}
-
-	body := console.PostMemberBody{
-		OrgRoles: orgRoles,
-	}
-
-	_, err := client.DefaultAPI.UpdateMembers(ctx, email.ValueString()).
-		PostMemberBody(body).
-		Execute()
-
-	if err != nil {
-		return fmt.Errorf("error while calling the update member API: %w", err)
-	}
-
-	return nil
+// memberRoles reads the role names out of the roles set.
+func memberRoles(ctx context.Context, roles types.Set) ([]string, diag.Diagnostics) {
+	var names []string
+	diags := roles.ElementsAs(ctx, &names, false)
+	return names, diags
 }

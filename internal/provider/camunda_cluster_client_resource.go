@@ -2,10 +2,10 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -39,7 +39,7 @@ type camundaClusterClientData struct {
 }
 
 type CamundaClusterClientResource struct {
-	provider *CamundaCloudProvider
+	client *consoleClient
 }
 
 func NewCamundaClusterClientResource() resource.Resource {
@@ -137,18 +137,9 @@ func (r *CamundaClusterClientResource) Configure(ctx context.Context, req resour
 		return
 	}
 
-	provider, ok := req.ProviderData.(*CamundaCloudProvider)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *incidentio.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.provider = provider
+	client, diags := consoleClientFromProviderData(req.ProviderData)
+	resp.Diagnostics.Append(diags...)
+	r.client = client
 }
 
 func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -166,23 +157,12 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 		scopes = append(scopes, scope.ValueString())
 	}
 
-	newClusterClientConfiguration := console.CreateClusterClientBody{
-		ClientName:  data.Name.ValueString(),
-		Permissions: scopes,
-	}
-
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	inline, _, err := r.provider.client.DefaultAPI.
-		CreateClient(ctx, data.ClusterId.ValueString()).
-		CreateClusterClientBody(newClusterClientConfiguration).
-		Execute()
+	inline, err := r.client.CreateClusterClient(ctx, data.ClusterId.ValueString(), data.Name.ValueString(), scopes)
 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create cluster client",
-			fmt.Sprintf("Unable to create cluster client, got error: %s",
-				formatClientError(err)),
+			fmt.Sprintf("Unable to create cluster client, got error: %s", err),
 		)
 		return
 	}
@@ -196,22 +176,17 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 		data.Scopes = append(data.Scopes, types.StringValue(permission))
 	}
 
-	clientResp, _, err := r.provider.client.DefaultAPI.
-		GetClient(ctx, data.ClusterId.ValueString(), inline.ClientId).
-		Execute()
+	clientResp, err := r.client.GetClusterClient(ctx, data.ClusterId.ValueString(), inline.ClientId)
 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to fetch client details",
-			fmt.Sprintf("Unable to fetch client details, got error got error: %s",
-				formatClientError(err)))
+			fmt.Sprintf("Unable to fetch client details, got error: %s", err))
 		return
 	}
 
-	if clientResp != nil {
-		data.ZeebeAddress = types.StringValue(clientResp.ZEEBE_ADDRESS)
-		data.ZeebeAuthorizationServerUrl = types.StringValue(clientResp.ZEEBE_AUTHORIZATION_SERVER_URL)
-	}
+	data.ZeebeAddress = types.StringValue(clientResp.ZEEBE_ADDRESS)
+	data.ZeebeAuthorizationServerUrl = types.StringValue(clientResp.ZEEBE_AUTHORIZATION_SERVER_URL)
 
 	tflog.Info(ctx, "Camunda cluster client created", map[string]interface{}{
 		"Id": data.Id,
@@ -231,12 +206,8 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	client, response, err := r.provider.client.DefaultAPI.
-		GetClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
-		Execute()
-	if isNotFound(err, response) {
+	client, err := r.client.GetClusterClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString())
+	if errors.Is(err, errNotFound) {
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -244,7 +215,7 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to read cluster client ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to read cluster client ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}
@@ -283,15 +254,11 @@ func (r *CamundaClusterClientResource) Delete(ctx context.Context, req resource.
 		return
 	}
 
-	ctx = context.WithValue(ctx, console.ContextAccessToken, r.provider.accessToken)
-
-	_, err := r.provider.client.DefaultAPI.
-		DeleteClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString()).
-		Execute()
+	err := r.client.DeleteClusterClient(ctx, data.ClusterId.ValueString(), data.ZeebeClientId.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to delete cluster client ID=%s, got error: %s", data.Id.ValueString(), formatClientError(err)),
+			fmt.Sprintf("Unable to delete cluster client ID=%s, got error: %s", data.Id.ValueString(), err),
 		)
 		return
 	}
