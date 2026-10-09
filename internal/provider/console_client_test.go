@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -156,13 +157,17 @@ func memberServer(t *testing.T, f *fakeConsole, emails ...string) *atomic.Int32 
 		}
 		writeJSON(t, w, members)
 	})
+	return &fetches
+}
+
+// memberWrites accepts every member update and delete.
+func memberWrites(f *fakeConsole) {
 	f.mux.HandleFunc("POST /members/{email}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	f.mux.HandleFunc("DELETE /members/{email}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	return &fetches
 }
 
 func TestConsoleClientFetchesMemberListOnceForConcurrentLookups(t *testing.T) {
@@ -222,6 +227,7 @@ func TestConsoleClientRefetchesMemberListAfterTTL(t *testing.T) {
 func TestConsoleClientKeepsMemberCacheCurrentAfterWrites(t *testing.T) {
 	f := newFakeConsole(t)
 	fetches := memberServer(t, f, "a@example.com")
+	memberWrites(f)
 	client := f.client(t)
 	ctx := context.Background()
 
@@ -304,5 +310,190 @@ func TestConsoleClientSendsAFreshTokenOnEveryRetry(t *testing.T) {
 	// outside the retry loop would repeat.
 	if len(seen) != 3 || seen[0] == seen[1] || seen[1] == seen[2] {
 		t.Errorf("expected a distinct bearer token per attempt, got %q", seen)
+	}
+}
+
+// rateLimitFirst answers the first call to a route with 429 and counts calls.
+func rateLimitFirst(t *testing.T, f *fakeConsole, pattern string, ok func(w http.ResponseWriter, r *http.Request)) (calls *atomic.Int32, bodies *[]string) {
+	t.Helper()
+
+	var n atomic.Int32
+	var seen []string
+	var mu sync.Mutex
+	f.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		seen = append(seen, string(b))
+		mu.Unlock()
+
+		if n.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "local_rate_limited", http.StatusTooManyRequests)
+			return
+		}
+		ok(w, r)
+	})
+	return &n, &seen
+}
+
+func TestConsoleClientReplaysOnlyWritesThatSetState(t *testing.T) {
+	ctx := context.Background()
+
+	replayed := map[string]struct {
+		pattern string
+		call    func(c *consoleClient) error
+		ok      func(w http.ResponseWriter, r *http.Request)
+	}{
+		"UpdateCluster (PATCH)": {
+			pattern: "PATCH /clusters/{id}",
+			call:    func(c *consoleClient) error { return c.UpdateCluster(ctx, "c1", "name", "desc") },
+			ok:      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
+		},
+		"SetMemberRoles (POST)": {
+			pattern: "POST /members/{email}",
+			call:    func(c *consoleClient) error { return c.SetMemberRoles(ctx, "a@example.com", []string{"admin"}) },
+			ok:      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
+		},
+	}
+	for name, tc := range replayed {
+		t.Run("replays "+name, func(t *testing.T) {
+			f := newFakeConsole(t)
+			calls, bodies := rateLimitFirst(t, f, tc.pattern, tc.ok)
+
+			if err := tc.call(f.client(t)); err != nil {
+				t.Fatalf("expected the retry to succeed, got %v", err)
+			}
+			if calls.Load() != 2 {
+				t.Fatalf("calls = %d, want 2", calls.Load())
+			}
+			if len(*bodies) != 2 || (*bodies)[0] == "" || (*bodies)[0] != (*bodies)[1] {
+				t.Errorf("the retry must resend the same non-empty body, got %q", *bodies)
+			}
+		})
+	}
+
+	notReplayed := map[string]struct {
+		pattern string
+		call    func(c *consoleClient) error
+	}{
+		"CreateCluster": {
+			pattern: "POST /clusters",
+			call: func(c *consoleClient) error {
+				_, err := c.CreateCluster(ctx, console.CreateClusterRequest{Name: "c"})
+				return err
+			},
+		},
+		"CreateClusterClient": {
+			pattern: "POST /clusters/{id}/clients",
+			call: func(c *consoleClient) error {
+				_, err := c.CreateClusterClient(ctx, "c1", "client", []string{"Zeebe"})
+				return err
+			},
+		},
+		"CreateSecret": {
+			pattern: "POST /clusters/{id}/secrets",
+			call:    func(c *consoleClient) error { return c.CreateSecret(ctx, "c1", "name", "value") },
+		},
+	}
+	for name, tc := range notReplayed {
+		t.Run("does not replay "+name, func(t *testing.T) {
+			f := newFakeConsole(t)
+			calls, _ := rateLimitFirst(t, f, tc.pattern, func(w http.ResponseWriter, r *http.Request) {
+				t.Errorf("%s must not be sent a second time", name)
+				w.WriteHeader(http.StatusOK)
+			})
+
+			err := tc.call(f.client(t))
+
+			if err == nil || !strings.Contains(err.Error(), "local_rate_limited") {
+				t.Errorf("expected the 429 to be reported, got %v", err)
+			}
+			if calls.Load() != 1 {
+				t.Errorf("calls = %d, want 1", calls.Load())
+			}
+		})
+	}
+}
+
+func TestConsoleClientEvictsMemberFromCacheWhenDeleteReportsNotFound(t *testing.T) {
+	f := newFakeConsole(t)
+	fetches := memberServer(t, f, "a@example.com")
+	f.mux.HandleFunc("DELETE /members/{email}", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "gone", http.StatusNotFound)
+	})
+	client := f.client(t)
+	ctx := context.Background()
+
+	if _, err := client.GetMember(ctx, "a@example.com"); err != nil {
+		t.Fatalf("GetMember: %v", err)
+	}
+	if err := client.DeleteMember(ctx, "a@example.com"); !errors.Is(err, errNotFound) {
+		t.Fatalf("DeleteMember err = %v, want errNotFound", err)
+	}
+
+	if _, err := client.GetMember(ctx, "a@example.com"); !errors.Is(err, errNotFound) {
+		t.Errorf("member must be gone from the cache, got %v", err)
+	}
+	if got := fetches.Load(); got != 1 {
+		t.Errorf("fetches = %d, want 1", got)
+	}
+}
+
+func TestConsoleClientLeavesMemberCacheUntouchedWhenWriteFails(t *testing.T) {
+	f := newFakeConsole(t)
+	memberServer(t, f, "a@example.com")
+	f.mux.HandleFunc("POST /members/{email}", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	client := f.client(t)
+	ctx := context.Background()
+
+	before, err := client.GetMember(ctx, "a@example.com")
+	if err != nil {
+		t.Fatalf("GetMember: %v", err)
+	}
+	if err := client.SetMemberRoles(ctx, "a@example.com", []string{"visitor"}); err == nil {
+		t.Fatal("expected SetMemberRoles to fail")
+	}
+	if err := client.SetMemberRoles(ctx, "new@example.com", []string{"visitor"}); err == nil {
+		t.Fatal("expected SetMemberRoles to fail")
+	}
+
+	after, err := client.GetMember(ctx, "a@example.com")
+	if err != nil || len(after.Roles) != len(before.Roles) || after.Roles[0] != before.Roles[0] {
+		t.Errorf("failed write changed the cached roles: %v (err %v)", after, err)
+	}
+	if _, err := client.GetMember(ctx, "new@example.com"); !errors.Is(err, errNotFound) {
+		t.Errorf("failed invite must not be cached, got %v", err)
+	}
+}
+
+func TestConsoleClientMemberCacheSurvivesConcurrentReadsAndWrites(t *testing.T) {
+	f := newFakeConsole(t)
+	memberServer(t, f, "a@example.com")
+	memberWrites(f)
+	client := f.client(t)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for i := range 10 {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = client.GetMember(ctx, "a@example.com")
+		}()
+		go func() {
+			defer wg.Done()
+			if err := client.SetMemberRoles(ctx, fmt.Sprintf("m%d@example.com", i), []string{"admin"}); err != nil {
+				t.Errorf("SetMemberRoles: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	for i := range 10 {
+		if _, err := client.GetMember(ctx, fmt.Sprintf("m%d@example.com", i)); err != nil {
+			t.Errorf("member m%d missing after concurrent writes: %v", i, err)
+		}
 	}
 }

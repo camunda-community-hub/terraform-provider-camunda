@@ -433,3 +433,33 @@ func TestRateLimitTransportDrainsAndClosesDiscardedResponses(t *testing.T) {
 		t.Errorf("discarded 429 body must be drained and closed, got %+v", discarded)
 	}
 }
+
+func TestSleepContext(t *testing.T) {
+	t.Run("waits for the duration", func(t *testing.T) {
+		start := time.Now()
+		if err := sleepContext(context.Background(), 20*time.Millisecond); err != nil {
+			t.Fatalf("sleepContext: %v", err)
+		}
+		if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
+			t.Errorf("returned after %s, want at least 20ms", elapsed)
+		}
+	})
+
+	t.Run("returns early when the context is cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
+		start := time.Now()
+		err := sleepContext(ctx, time.Minute)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
+		}
+		if elapsed := time.Since(start); elapsed > 5*time.Second {
+			t.Errorf("did not return promptly after cancellation (%s)", elapsed)
+		}
+	})
+}
