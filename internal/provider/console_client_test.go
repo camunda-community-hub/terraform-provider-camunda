@@ -282,3 +282,27 @@ func TestConsoleClientRetriesRateLimitedRequests(t *testing.T) {
 		t.Errorf("calls = %d, want 3", got)
 	}
 }
+
+func TestConsoleClientSendsAFreshTokenOnEveryRetry(t *testing.T) {
+	f := newFakeConsole(t)
+	var seen []string
+	f.mux.HandleFunc("GET /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("Authorization"))
+		if len(seen) < 3 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "local_rate_limited", http.StatusTooManyRequests)
+			return
+		}
+		writeJSON(t, w, clusterWithStatus(r.PathValue("id"), console.CLUSTERCOMPONENTSTATUS_HEALTHY))
+	})
+
+	if _, err := f.client(t).GetCluster(context.Background(), "c1"); err != nil {
+		t.Fatalf("GetCluster: %v", err)
+	}
+
+	// The fake issues tokens that expire immediately, so a token attached once
+	// outside the retry loop would repeat.
+	if len(seen) != 3 || seen[0] == seen[1] || seen[1] == seen[2] {
+		t.Errorf("expected a distinct bearer token per attempt, got %q", seen)
+	}
+}

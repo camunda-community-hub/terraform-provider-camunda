@@ -83,11 +83,13 @@ func newConsoleClient(ctx context.Context, cfg consoleClientConfig) (*consoleCli
 	apiCfg.Scheme = apiURL.Scheme
 	apiCfg.Host = apiURL.Host
 	apiCfg.Debug = cfg.Debug
+	// The retries sit outside the oauth2 transport, so every attempt gets a
+	// current token even if the waits outlast the previous one.
 	apiCfg.HTTPClient = &http.Client{
-		Transport: &oauth2.Transport{
+		Transport: newRateLimitTransport(&oauth2.Transport{
 			Source: tokenSource,
-			Base:   newRateLimitTransport(http.DefaultTransport),
-		},
+			Base:   http.DefaultTransport,
+		}),
 	}
 
 	return &consoleClient{
