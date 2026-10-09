@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"strconv"
@@ -154,7 +155,11 @@ func retryAfter(value string, now time.Time) (time.Duration, bool) {
 	if value == "" {
 		return 0, false
 	}
-	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds >= 0 {
+		// Saturate instead of overflowing time.Duration into a negative wait.
+		if seconds > int64(math.MaxInt64/time.Second) {
+			return time.Duration(math.MaxInt64), true
+		}
 		return time.Duration(seconds) * time.Second, true
 	}
 	if at, err := http.ParseTime(value); err == nil {

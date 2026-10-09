@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -211,6 +212,9 @@ func TestRetryAfter(t *testing.T) {
 		"http date": {now.Add(10 * time.Second).Format(http.TimeFormat), 10 * time.Second, true},
 		"past date": {now.Add(-time.Minute).Format(http.TimeFormat), 0, true},
 		"garbage":   {"soon", 0, false},
+		"overflows when converted to nanoseconds":  {"9223372037", time.Duration(math.MaxInt64), true},
+		"larger than int64":                        {"99999999999999999999", 0, false},
+		"largest value that still fits a duration": {"9223372036", 9223372036 * time.Second, true},
 	}
 
 	for name, tc := range tests {
@@ -303,5 +307,17 @@ func TestRateLimitTransportDefaultsStayWithinTheWaitBudget(t *testing.T) {
 	}
 	if total > tr.maxWait {
 		t.Errorf("waited %s in total, want at most %s", total, tr.maxWait)
+	}
+}
+
+func TestRateLimitTransportCapsHugeRetryAfter(t *testing.T) {
+	tr, _, sleeps := recordingTransport([]int{429, 200}, http.Header{"Retry-After": []string{"9223372037"}})
+
+	if _, err := tr.RoundTrip(newPost(t, context.Background())); err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+
+	if len(*sleeps) != 1 || (*sleeps)[0] != tr.maxBackoff {
+		t.Errorf("slept %v, want [%s] rather than an immediate retry", *sleeps, tr.maxBackoff)
 	}
 }
