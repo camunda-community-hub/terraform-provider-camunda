@@ -1,18 +1,79 @@
 [![](https://img.shields.io/badge/Community%20Extension-An%20open%20source%20community%20maintained%20project-FF4700)](https://github.com/camunda-community-hub/community) ![Compatible with: Camunda Platform 8](https://img.shields.io/badge/Compatible%20with-Camunda%20Platform%208-0072Ce) [![](https://img.shields.io/badge/Lifecycle-Incubating-blue)](https://github.com/Camunda-Community-Hub/community/blob/main/extension-lifecycle.md#incubating-)
 
-# Camunda Platform 8 Terraform Provider
+# Camunda 8 Terraform Provider
 
-This is an community supported [Terraform](https://www.terraform.io/) provider
-for [Camunda Platform 8](https://camunda.com/platform/).
+A community-maintained [Terraform](https://www.terraform.io/) provider for
+[Camunda 8 SaaS](https://camunda.com/platform/). It manages clusters, cluster API
+clients, connector secrets, IP allowlists and organization members through the
+[Administration API](https://docs.camunda.io/docs/apis-tools/administration-api/administration-api-reference/).
 
-Camunda Platform 8 allows you to *Design, automate, and improve any process across your organization*.
-Further information can be found under https://docs.camunda.io/.
+* Documentation: https://registry.terraform.io/providers/camunda-community-hub/camunda/latest/docs
+* Release notes: https://github.com/camunda-community-hub/terraform-provider-camunda/releases
+* Upgrading from v0.0.x: [v0.1 upgrade guide](https://registry.terraform.io/providers/camunda-community-hub/camunda/latest/docs/guides/upgrading-to-0.1)
 
-This Terraform provider allows to manage the resources provided by the Camunda
-Platform 8, such as clusters, clients, etc.
+## Quick start
 
-* Documentation: https://registry.terraform.io/providers/camunda-community-hub/camunda/
+1. In Camunda Hub, go to **Organization > Manage organization > Administration API** and
+   create credentials with the scopes for the resources you want to manage (for example **Cluster**).
+1. Create a cluster:
 
+   ```terraform
+   terraform {
+     required_providers {
+       camunda = {
+         source  = "camunda-community-hub/camunda"
+         version = "~> 0.1"
+       }
+     }
+   }
+
+   variable "camunda_client_id" {}
+   variable "camunda_client_secret" {
+     sensitive = true
+   }
+
+   provider "camunda" {
+     client_id     = var.camunda_client_id
+     client_secret = var.camunda_client_secret
+   }
+
+   data "camunda_channel" "stable" {
+     name = "Stable"
+   }
+
+   data "camunda_region" "belgium" {
+     name = "Belgium, Europe (europe-west1)"
+   }
+
+   data "camunda_cluster_plan_type" "trial" {
+     name = "Trial Cluster"
+   }
+
+   resource "camunda_cluster" "dev" {
+     name       = "dev"
+     channel    = data.camunda_channel.stable.id
+     generation = data.camunda_channel.stable.default_generation_id
+     region     = data.camunda_region.belgium.id
+     plan_type  = data.camunda_cluster_plan_type.trial.id
+
+     lifecycle {
+       prevent_destroy = true
+     }
+   }
+   ```
+
+1. Run it, passing the credentials through the environment:
+
+   ```shell
+   export TF_VAR_camunda_client_id="<client-id>"
+   export TF_VAR_camunda_client_secret="<client-secret>"
+   terraform init
+   terraform apply
+   ```
+
+Changing a cluster's `plan_type`, `generation` or `auto_update` replaces the cluster, which
+deletes its data. `prevent_destroy` makes such a plan fail instead, so keep it on clusters you
+can't lose.
 
 ## Development
 
@@ -34,20 +95,14 @@ go install
 
 - To generate or update documentation, run `go generate`.
 
-- To run the full suite of acceptance tests, run `make testacc`.
-
-*Note:* Acceptance tests create real resources, and often cost money to run.
-
-```shell
-make testacc
-```
+- To run the tests, run `go test ./internal/...`. They run real Terraform configurations
+  against an in-memory fake of the Administration API, so they need neither credentials
+  nor a Camunda account.
 
 ### Release the Provider
 
-- Create a new git tag named `vX.Y.Z` with: `git tag -s -m "vX.Y.Z" vX.Y.Z`
-- Push the tag to GitHub with: `git push origin vX.Y.Z`
+Create a GitHub release with a new `vX.Y.Z` tag, for example with
+`gh release create vX.Y.Z --notes-file notes.md`. Pushing a `vX.Y.Z` tag works too.
 
-Then:
-
-- GitHub Actions should build all the artifacts and create the release.
-- Terraform Cloud Registry should automatically detect the new release and publish it.
+The tag starts the `Release` workflow, which builds and signs the artifacts with GoReleaser
+and attaches them to the release. The Terraform Registry picks up the new version from there.
