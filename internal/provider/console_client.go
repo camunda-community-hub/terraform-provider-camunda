@@ -234,24 +234,19 @@ func (c *consoleClient) SetIPAllowlist(ctx context.Context, clusterID string, en
 
 // Cluster clients
 
-func (c *consoleClient) CreateClusterClient(ctx context.Context, clusterID, name string, scopes []string) (*console.CreatedClusterClient, error) {
+// CreateClusterClient creates a client and returns its ID and secret. The
+// secret is only ever returned here.
+func (c *consoleClient) CreateClusterClient(ctx context.Context, clusterID, name string, scopes []string) (*createdClusterClient, error) {
 	created, response, err := c.api.CreateClient(ctx, clusterID).
 		CreateClusterClientBody(console.CreateClusterClientBody{
 			ClientName:  name,
 			Permissions: scopes,
 		}).
 		Execute()
-	return created, apiError(err, response)
-}
-
-// clusterClient is a cluster client as it exists in the Console. The client
-// secret is only returned once, by CreateClusterClient.
-type clusterClient struct {
-	ClientID               string
-	Name                   string
-	Scopes                 []string
-	ZeebeAddress           string
-	AuthorizationServerURL string
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return &createdClusterClient{ClientID: created.ClientId, Secret: created.ClientSecret}, nil
 }
 
 // GetClusterClient returns the client with its connection details and scopes,

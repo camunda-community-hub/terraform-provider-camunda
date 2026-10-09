@@ -141,8 +141,8 @@ func createClusterClient(op *op, plan camundaClusterClientData) (camundaClusterC
 		return plan, err
 	}
 
-	plan.ZeebeClientId = types.StringValue(created.ClientId)
-	plan.Secret = types.StringValue(created.ClientSecret)
+	plan.ZeebeClientId = types.StringValue(created.ClientID)
+	plan.Secret = types.StringValue(created.Secret)
 	return plan, nil
 }
 

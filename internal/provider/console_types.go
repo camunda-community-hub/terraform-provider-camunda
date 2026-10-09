@@ -21,3 +21,19 @@ type allowlistEntry struct {
 	IP          string
 	Description string
 }
+
+// clusterClient is a cluster client as it exists in the Console. The client
+// secret is only returned once, by CreateClusterClient.
+type clusterClient struct {
+	ClientID               string
+	Name                   string
+	Scopes                 []string
+	ZeebeAddress           string
+	AuthorizationServerURL string
+}
+
+// createdClusterClient is what creating a cluster client returns.
+type createdClusterClient struct {
+	ClientID string
+	Secret   string
+}
