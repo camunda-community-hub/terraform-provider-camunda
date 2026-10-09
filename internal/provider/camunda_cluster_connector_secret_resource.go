@@ -77,9 +77,9 @@ func clusterConnectorSecretSchema() schema.Schema {
 
 // importClusterConnectorSecret takes "<cluster_id>/<secret_name>".
 func importClusterConnectorSecret(id string) (camundaClusterConnectorSecret, error) {
-	clusterID, name, diags := splitImportID(id, "<cluster_id>/<secret_name>")
-	if diags.HasError() {
-		return camundaClusterConnectorSecret{}, diagsError(diags)
+	clusterID, name, err := splitImportID(id, "<cluster_id>/<secret_name>")
+	if err != nil {
+		return camundaClusterConnectorSecret{}, err
 	}
 	return camundaClusterConnectorSecret{
 		ClusterId: types.StringValue(clusterID),

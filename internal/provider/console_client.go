@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"golang.org/x/oauth2"
@@ -38,9 +36,9 @@ type consoleClientConfig struct {
 // become healthy. Resources and data sources only map between Terraform state
 // and the values returned here.
 //
-// Every method returns an error that already carries the API response body.
-// Getters return an error wrapping errNotFound when the object is missing;
-// Deletes treat a missing object as success.
+// Every method returns an error that already carries the API response body,
+// wrapping errNotFound when the object is missing. Deciding what a missing
+// object means is left to the lifecycle module.
 type consoleClient struct {
 	api *console.DefaultAPIService
 
@@ -88,46 +86,6 @@ func newConsoleClient(ctx context.Context, cfg consoleClientConfig) (*consoleCli
 	}, nil
 }
 
-// consoleClientFromProviderData is the shared body of every resource and data
-// source Configure method.
-func consoleClientFromProviderData(providerData any) (*consoleClient, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	client, ok := providerData.(*consoleClient)
-	if !ok {
-		diags.AddError(
-			"Unexpected Configure Type",
-			fmt.Sprintf("Expected *consoleClient, got: %T. Please report this issue to the provider developers.", providerData),
-		)
-	}
-
-	return client, diags
-}
-
-// unexpectedUpdate is the Update result for resources whose attributes all
-// force replacement, so Terraform should never ask them to update in place.
-func unexpectedUpdate() diag.Diagnostic {
-	return diag.NewErrorDiagnostic(
-		"Unexpected Update",
-		"Every attribute of this resource forces replacement, so it can't be updated in place. Please report this issue to the provider developers.",
-	)
-}
-
-// splitImportID splits an import ID of the form "<first>/<second>" at the
-// first slash, so the second part may itself contain slashes.
-func splitImportID(id, format string) (string, string, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	first, second, ok := strings.Cut(id, "/")
-	if !ok || first == "" || second == "" {
-		diags.AddError(
-			"Invalid import ID",
-			fmt.Sprintf("Expected an import ID of the form %q, got: %q", format, id),
-		)
-	}
-	return first, second, diags
-}
-
 // apiError turns a generated-client error into one that carries the response
 // body, wrapping errNotFound on HTTP 404.
 func apiError(err error, response *http.Response) error {
@@ -147,14 +105,6 @@ func apiError(err error, response *http.Response) error {
 	}
 
 	return errors.New(msg)
-}
-
-// ignoreNotFound treats a missing object as already deleted.
-func ignoreNotFound(err error) error {
-	if errors.Is(err, errNotFound) {
-		return nil
-	}
-	return err
 }
 
 // Clusters
@@ -183,7 +133,7 @@ func (c *consoleClient) UpdateCluster(ctx context.Context, clusterID, name, desc
 
 func (c *consoleClient) DeleteCluster(ctx context.Context, clusterID string) error {
 	response, err := c.api.DeleteCluster(ctx, clusterID).Execute()
-	return ignoreNotFound(apiError(err, response))
+	return apiError(err, response)
 }
 
 // WaitClusterHealthy blocks until the cluster reports healthy twice in a row.
@@ -296,7 +246,7 @@ func (c *consoleClient) GetClusterClient(ctx context.Context, clusterID, clientI
 
 func (c *consoleClient) DeleteClusterClient(ctx context.Context, clusterID, clientID string) error {
 	response, err := c.api.DeleteClient(ctx, clusterID, clientID).Execute()
-	return ignoreNotFound(apiError(err, response))
+	return apiError(err, response)
 }
 
 // Connector secrets
@@ -325,7 +275,7 @@ func (c *consoleClient) GetSecret(ctx context.Context, clusterID, name string) (
 
 func (c *consoleClient) DeleteSecret(ctx context.Context, clusterID, name string) error {
 	response, err := c.api.DeleteSecret(ctx, clusterID, name).Execute()
-	return ignoreNotFound(apiError(err, response))
+	return apiError(err, response)
 }
 
 // Organization members
@@ -364,7 +314,7 @@ func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles 
 
 func (c *consoleClient) DeleteMember(ctx context.Context, email string) error {
 	response, err := c.api.DeleteMember(ctx, email).Execute()
-	return ignoreNotFound(apiError(err, response))
+	return apiError(err, response)
 }
 
 // Parameters

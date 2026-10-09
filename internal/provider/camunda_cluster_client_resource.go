@@ -168,9 +168,9 @@ func readClusterClient(op *op, prior camundaClusterClientData) (camundaClusterCl
 // importClusterClient takes "<cluster_id>/<zeebe_client_id>". The client
 // secret can't be read back, so it stays empty after an import.
 func importClusterClient(id string) (camundaClusterClientData, error) {
-	clusterID, clientID, diags := splitImportID(id, "<cluster_id>/<zeebe_client_id>")
-	if diags.HasError() {
-		return camundaClusterClientData{}, diagsError(diags)
+	clusterID, clientID, err := splitImportID(id, "<cluster_id>/<zeebe_client_id>")
+	if err != nil {
+		return camundaClusterClientData{}, err
 	}
 	return camundaClusterClientData{
 		ClusterId:     types.StringValue(clusterID),

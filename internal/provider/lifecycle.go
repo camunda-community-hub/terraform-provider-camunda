@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -226,4 +227,30 @@ func diagsError(diags diag.Diagnostics) error {
 		errs = append(errs, fmt.Errorf("%s: %s", d.Summary(), d.Detail()))
 	}
 	return errors.Join(errs...)
+}
+
+// consoleClientFromProviderData is the shared body of every resource and data
+// source Configure method.
+func consoleClientFromProviderData(providerData any) (*consoleClient, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	client, ok := providerData.(*consoleClient)
+	if !ok {
+		diags.AddError(
+			"Unexpected Configure Type",
+			fmt.Sprintf("Expected *consoleClient, got: %T. Please report this issue to the provider developers.", providerData),
+		)
+	}
+
+	return client, diags
+}
+
+// splitImportID splits an import ID of the form "<first>/<second>" at the
+// first slash, so the second part may itself contain slashes.
+func splitImportID(id, format string) (string, string, error) {
+	first, second, ok := strings.Cut(id, "/")
+	if !ok || first == "" || second == "" {
+		return "", "", fmt.Errorf("expected an import ID of the form %q, got: %q", format, id)
+	}
+	return first, second, nil
 }
