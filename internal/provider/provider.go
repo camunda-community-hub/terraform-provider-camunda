@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -47,31 +49,28 @@ func (p *CamundaCloudProvider) Schema(ctx context.Context, req provider.SchemaRe
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"client_id": schema.StringAttribute{
-				MarkdownDescription: "Client ID to authenticate against Camunda SaaS",
-				Required:            true,
+				MarkdownDescription: "Client ID of an Administration API client. Can also be set with the `CAMUNDA_CONSOLE_CLIENT_ID` environment variable.",
+				Optional:            true,
 			},
 			"client_secret": schema.StringAttribute{
-				MarkdownDescription: "Client Secret to authenticate against Camunda SaaS",
-				Required:            true,
+				MarkdownDescription: "Client secret of an Administration API client. Can also be set with the `CAMUNDA_CONSOLE_CLIENT_SECRET` environment variable.",
+				Optional:            true,
+				Sensitive:           true,
 			},
 			"debug": schema.BoolAttribute{
 				MarkdownDescription: "Enable debug logs",
-				Required:            false,
 				Optional:            true,
 			},
 			"api_url": schema.StringAttribute{
-				MarkdownDescription: "URL to Camunda SaaS API",
-				Required:            false,
+				MarkdownDescription: "URL of the Camunda SaaS Administration API. Can also be set with the `CAMUNDA_CONSOLE_BASE_URL` environment variable. Defaults to `https://api.cloud.camunda.io`.",
 				Optional:            true,
 			},
 			"token_url": schema.StringAttribute{
-				MarkdownDescription: "URL to fetch token from",
-				Required:            false,
+				MarkdownDescription: "URL to fetch the OAuth token from. Can also be set with the `CAMUNDA_OAUTH_URL` environment variable. Defaults to `https://login.cloud.camunda.io/oauth/token`.",
 				Optional:            true,
 			},
 			"audience": schema.StringAttribute{
-				MarkdownDescription: "Audience of the token",
-				Required:            false,
+				MarkdownDescription: "Audience of the token. Can also be set with the `CAMUNDA_CONSOLE_OAUTH_AUDIENCE` environment variable. Defaults to the host of `api_url`.",
 				Optional:            true,
 			},
 		},
@@ -87,14 +86,46 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 		return
 	}
 
-	apiURL := "https://api.cloud.camunda.io"
-	if !data.ApiUrl.IsNull() {
-		apiURL = data.ApiUrl.ValueString()
+	for name, value := range map[string]types.String{
+		"client_id":     data.ClientID,
+		"client_secret": data.ClientSecret,
+		"api_url":       data.ApiUrl,
+		"token_url":     data.TokenUrl,
+		"audience":      data.Audience,
+	} {
+		if value.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root(name),
+				"Unknown Provider Configuration",
+				fmt.Sprintf("The provider can't connect to Camunda SaaS while %s is unknown. Set it to a value known at plan time.", name),
+			)
+		}
+	}
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	tokenURL := "https://login.cloud.camunda.io/oauth/token"
-	if !data.TokenUrl.IsNull() {
-		tokenURL = data.TokenUrl.ValueString()
+	clientID := configOrEnv(data.ClientID, "CAMUNDA_CONSOLE_CLIENT_ID", "")
+	clientSecret := configOrEnv(data.ClientSecret, "CAMUNDA_CONSOLE_CLIENT_SECRET", "")
+	apiURL := configOrEnv(data.ApiUrl, "CAMUNDA_CONSOLE_BASE_URL", "https://api.cloud.camunda.io")
+	tokenURL := configOrEnv(data.TokenUrl, "CAMUNDA_OAUTH_URL", "https://login.cloud.camunda.io/oauth/token")
+
+	if clientID == "" {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("client_id"),
+			"Missing Client ID",
+			"Set client_id in the provider configuration or the CAMUNDA_CONSOLE_CLIENT_ID environment variable.",
+		)
+	}
+	if clientSecret == "" {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("client_secret"),
+			"Missing Client Secret",
+			"Set client_secret in the provider configuration or the CAMUNDA_CONSOLE_CLIENT_SECRET environment variable.",
+		)
+	}
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	parsedAPIURL, err := url.Parse(apiURL)
@@ -106,17 +137,14 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 		return
 	}
 
-	audience := parsedAPIURL.Host
-	if !data.Audience.IsNull() {
-		audience = data.Audience.ValueString()
-	}
+	audience := configOrEnv(data.Audience, "CAMUNDA_CONSOLE_OAUTH_AUDIENCE", parsedAPIURL.Host)
 
 	client, err := newConsoleClient(ctx, consoleClientConfig{
 		APIURL:       apiURL,
 		TokenURL:     tokenURL,
 		Audience:     audience,
-		ClientID:     data.ClientID.ValueString(),
-		ClientSecret: data.ClientSecret.ValueString(),
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
 		Debug:        data.Debug.ValueBool(),
 	})
 	if err != nil {
@@ -130,6 +158,18 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
+}
+
+// configOrEnv returns the configured value, else the environment variable,
+// else the fallback.
+func configOrEnv(value types.String, envVar, fallback string) string {
+	if !value.IsNull() {
+		return value.ValueString()
+	}
+	if v := os.Getenv(envVar); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func (p *CamundaCloudProvider) Resources(ctx context.Context) []func() resource.Resource {
