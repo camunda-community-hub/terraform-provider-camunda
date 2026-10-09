@@ -122,6 +122,7 @@ func TestRateLimitTransportReturnsThe429WhenRetryAfterExceedsTheBudget(t *testin
 		"longer than the budget":         "3600",
 		"overflows a duration":           "9223372037",
 		"saturates to the maximum value": "9223372036",
+		"larger than int64":              "99999999999999999999",
 	} {
 		t.Run(name, func(t *testing.T) {
 			tr, bodies, sleeps := recordingTransport([]int{429, 200}, http.Header{"Retry-After": []string{retryAfter}})
@@ -225,7 +226,7 @@ func TestRetryAfter(t *testing.T) {
 		"past date": {now.Add(-time.Minute).Format(http.TimeFormat), 0, true},
 		"garbage":   {"soon", 0, false},
 		"overflows when converted to nanoseconds":  {"9223372037", time.Duration(math.MaxInt64), true},
-		"larger than int64":                        {"99999999999999999999", 0, false},
+		"larger than int64":                        {"99999999999999999999", time.Duration(math.MaxInt64), true},
 		"largest value that still fits a duration": {"9223372036", 9223372036 * time.Second, true},
 	}
 

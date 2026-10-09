@@ -177,9 +177,11 @@ func retryAfter(value string, now time.Time) (time.Duration, bool) {
 	if value == "" {
 		return 0, false
 	}
-	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds >= 0 {
-		// Saturate instead of overflowing time.Duration into a negative wait.
-		if seconds > int64(math.MaxInt64/time.Second) {
+	if isDigits(value) {
+		// Every all-digit value is valid delta-seconds, however large. Saturate
+		// instead of overflowing time.Duration into a negative or early wait.
+		seconds, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || seconds > int64(math.MaxInt64/time.Second) {
 			return time.Duration(math.MaxInt64), true
 		}
 		return time.Duration(seconds) * time.Second, true
@@ -188,6 +190,15 @@ func retryAfter(value string, now time.Time) (time.Duration, bool) {
 		return max(at.Sub(now), 0), true
 	}
 	return 0, false
+}
+
+func isDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 func sleepContext(ctx context.Context, d time.Duration) error {
