@@ -218,3 +218,12 @@ func (r *managedResource[M]) readInto(op *op, operation string, prior M, state *
 
 	op.diags.Append(state.Set(op.ctx, &current)...)
 }
+
+// diagsError turns framework diagnostics met inside a hook into an error.
+func diagsError(diags diag.Diagnostics) error {
+	var errs []error
+	for _, d := range diags.Errors() {
+		errs = append(errs, fmt.Errorf("%s: %s", d.Summary(), d.Detail()))
+	}
+	return errors.Join(errs...)
+}
