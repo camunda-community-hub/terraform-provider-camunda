@@ -41,7 +41,9 @@ func newFakeConsole(t *testing.T) *fakeConsole {
 		n := f.tokensIssued.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		// expires_in below oauth2's expiry delta forces a refresh on every use.
-		fmt.Fprintf(w, `{"access_token":"token-%d","token_type":"bearer","expires_in":1}`, n)
+		if _, err := fmt.Fprintf(w, `{"access_token":"token-%d","token_type":"bearer","expires_in":1}`, n); err != nil {
+			t.Errorf("write token response: %v", err)
+		}
 	})
 	f.Server = httptest.NewServer(f.mux)
 	t.Cleanup(f.Close)
