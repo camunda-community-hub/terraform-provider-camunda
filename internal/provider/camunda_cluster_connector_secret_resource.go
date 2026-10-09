@@ -167,6 +167,14 @@ func (r *CamundaClusterConnectorSecretResource) Delete(ctx context.Context, req 
 	}
 }
 
+// ImportState takes "<cluster_id>/<name>".
 func (r *CamundaClusterConnectorSecretResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+	clusterID, name, diags := splitImportID(req.ID, "<cluster_id>/<name>")
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("cluster_id"), clusterID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
 }

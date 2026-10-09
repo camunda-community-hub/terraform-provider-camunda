@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"testing"
 
@@ -56,6 +57,22 @@ func TestClusterConnectorSecretResource(t *testing.T) {
 			{
 				Config: connectorSecretConfig(f, "API_TOKEN", "two"),
 				Check:  expectSecrets(map[string]string{"API_TOKEN": "two"}),
+			},
+			{
+				ResourceName: "camunda_cluster_connector_secret.test",
+				ImportState:  true,
+				ImportStateIdFunc: func(s *terraform.State) (string, error) {
+					secret := s.RootModule().Resources["camunda_cluster_connector_secret.test"].Primary.Attributes
+					return secret["cluster_id"] + "/" + secret["name"], nil
+				},
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "name",
+			},
+			{
+				ResourceName:  "camunda_cluster_connector_secret.test",
+				ImportState:   true,
+				ImportStateId: "API_TOKEN",
+				ExpectError:   regexp.MustCompile(`Invalid import ID`),
 			},
 		},
 	})

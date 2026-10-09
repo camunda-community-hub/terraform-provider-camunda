@@ -171,22 +171,14 @@ func (r *CamundaClusterClientResource) Create(ctx context.Context, req resource.
 	data.ZeebeClientId = types.StringValue(inline.ClientId)
 	data.Secret = types.StringValue(inline.ClientSecret)
 
-	data.Scopes = []types.String{}
-	for _, permission := range inline.Permissions {
-		data.Scopes = append(data.Scopes, types.StringValue(permission))
-	}
-
-	clientResp, err := r.client.GetClusterClient(ctx, data.ClusterId.ValueString(), inline.ClientId)
-
+	client, err := r.client.GetClusterClient(ctx, data.ClusterId.ValueString(), inline.ClientId)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to fetch client details",
 			fmt.Sprintf("Unable to fetch client details, got error: %s", err))
 		return
 	}
-
-	data.ZeebeAddress = types.StringValue(clientResp.ZEEBE_ADDRESS)
-	data.ZeebeAuthorizationServerUrl = types.StringValue(clientResp.ZEEBE_AUTHORIZATION_SERVER_URL)
+	data.setFromAPI(client)
 
 	tflog.Info(ctx, "Camunda cluster client created", map[string]interface{}{
 		"Id": data.Id,
@@ -220,11 +212,7 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 		return
 	}
 
-	data.Name = types.StringValue(client.Name)
-	data.ZeebeClientId = types.StringValue(client.ZEEBE_CLIENT_ID)
-	data.ZeebeAddress = types.StringValue(client.ZEEBE_ADDRESS)
-	data.ZeebeAuthorizationServerUrl = types.StringValue(client.ZEEBE_AUTHORIZATION_SERVER_URL)
-	// TODO: implement reading scopes while reading from the API
+	data.setFromAPI(client)
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -254,6 +242,29 @@ func (r *CamundaClusterClientResource) Delete(ctx context.Context, req resource.
 	}
 }
 
+// ImportState takes "<cluster_id>/<zeebe_client_id>". The client secret can't
+// be read back, so it stays empty after an import.
 func (r *CamundaClusterClientResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	clusterID, clientID, diags := splitImportID(req.ID, "<cluster_id>/<zeebe_client_id>")
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("cluster_id"), clusterID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("zeebe_client_id"), clientID)...)
+}
+
+// setFromAPI copies what the Console reports about the client into the model.
+func (d *camundaClusterClientData) setFromAPI(client *clusterClient) {
+	d.Name = types.StringValue(client.Name)
+	d.ZeebeClientId = types.StringValue(client.ClientID)
+	d.ZeebeAddress = types.StringValue(client.ZeebeAddress)
+	d.ZeebeAuthorizationServerUrl = types.StringValue(client.AuthorizationServerURL)
+
+	d.Scopes = []types.String{}
+	for _, scope := range client.Scopes {
+		d.Scopes = append(d.Scopes, types.StringValue(scope))
+	}
 }

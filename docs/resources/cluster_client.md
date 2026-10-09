@@ -69,3 +69,13 @@ output "scopes" {
 - `zeebe_address` (String) Zeebe Address
 - `zeebe_authorization_server_url` (String) Zeebe Authorization Server Url
 - `zeebe_client_id` (String) Zeebe Client Id
+
+## Import
+
+Import is supported using the following syntax:
+
+```shell
+# Import a cluster client by "<cluster_id>/<zeebe_client_id>".
+# The client secret is only available when the client is created, so it is empty after an import.
+terraform import camunda_cluster_client.test <cluster_id>/<zeebe_client_id>
+```

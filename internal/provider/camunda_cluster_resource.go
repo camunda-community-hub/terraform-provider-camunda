@@ -148,6 +148,18 @@ func (r *CamundaClusterResource) Create(ctx context.Context, req resource.Create
 		)
 		return
 	}
+
+	cluster, err := r.client.GetCluster(ctx, clusterId)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", clusterId, err),
+		)
+		return
+	}
+	data.setFromAPI(cluster)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -174,19 +186,7 @@ func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	data.Name = types.StringValue(cluster.Name)
-	data.Channel = types.StringValue(cluster.Channel.Uuid)
-	data.Region = types.StringValue(cluster.Region.Uuid)
-	data.PlanType = types.StringValue(cluster.PlanType.Uuid)
-	data.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
-	data.CurrentGeneration = types.StringValue(cluster.Generation.Uuid)
-
-	// With auto_update the server moves the cluster to newer generations, so
-	// the configured generation is only where it started; keep it instead of
-	// reporting a diff the user can't apply.
-	if data.Generation.IsNull() || !cluster.AutoUpdate {
-		data.Generation = data.CurrentGeneration
-	}
+	data.setFromAPI(cluster)
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -293,4 +293,21 @@ func immutableClusterChanges(plan, state camundaClusterData) diag.Diagnostics {
 	}
 
 	return diags
+}
+
+// setFromAPI copies what the Console reports about the cluster into the model.
+func (d *camundaClusterData) setFromAPI(cluster *console.Cluster) {
+	d.Name = types.StringValue(cluster.Name)
+	d.Channel = types.StringValue(cluster.Channel.Uuid)
+	d.Region = types.StringValue(cluster.Region.Uuid)
+	d.PlanType = types.StringValue(cluster.PlanType.Uuid)
+	d.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
+	d.CurrentGeneration = types.StringValue(cluster.Generation.Uuid)
+
+	// With auto_update the server moves the cluster to newer generations, so
+	// the configured generation is only where it started; keep it instead of
+	// reporting a diff the user can't apply.
+	if d.Generation.IsNull() || !cluster.AutoUpdate {
+		d.Generation = d.CurrentGeneration
+	}
 }

@@ -159,6 +159,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		"DELETE /clusters/{id}":                      s.deleteCluster,
 		"PUT /clusters/{id}/ipallowlist":             s.updateIPAllowlist,
 		"POST /clusters/{id}/clients":                s.createClient,
+		"GET /clusters/{id}/clients":                 s.listClients,
 		"GET /clusters/{id}/clients/{clientId}":      s.getClient,
 		"DELETE /clusters/{id}/clients/{clientId}":   s.deleteClient,
 		"POST /clusters/{id}/secrets":                s.createSecret,
@@ -329,6 +330,24 @@ func (s *consoleState) createClient(w http.ResponseWriter, r *http.Request) {
 	}
 	s.clients[clusterID][client.ClientId] = client
 	writeJSON(s.t, w, client)
+}
+
+func (s *consoleState) listClients(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.clusters[clusterID]; !ok {
+		notFound(w, "cluster")
+		return
+	}
+
+	clients := []console.ClusterClient{}
+	for _, client := range s.clients[clusterID] {
+		clients = append(clients, console.ClusterClient{
+			ClientId:    client.ClientId,
+			Name:        client.Name,
+			Permissions: client.Permissions,
+		})
+	}
+	writeJSON(s.t, w, clients)
 }
 
 func (s *consoleState) getClient(w http.ResponseWriter, r *http.Request) {

@@ -71,3 +71,12 @@ resource "camunda_cluster" "test" {
 
 - `current_generation` (String) Generation the cluster currently runs.
 - `id` (String) Cluster ID
+
+## Import
+
+Import is supported using the following syntax:
+
+```shell
+# Import a cluster by its ID.
+terraform import camunda_cluster.test <cluster_id>
+```

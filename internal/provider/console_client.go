@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
@@ -110,6 +111,20 @@ func unexpectedUpdate() diag.Diagnostic {
 		"Unexpected Update",
 		"Every attribute of this resource forces replacement, so it can't be updated in place. Please report this issue to the provider developers.",
 	)
+}
+
+// splitImportID splits an import ID of the form "<first>/<second>".
+func splitImportID(id, format string) (string, string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	first, second, ok := strings.Cut(id, "/")
+	if !ok || first == "" || second == "" || strings.Contains(second, "/") {
+		diags.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("Expected an import ID of the form %q, got: %q", format, id),
+		)
+	}
+	return first, second, diags
 }
 
 // apiError turns a generated-client error into one that carries the response
@@ -238,9 +253,42 @@ func (c *consoleClient) CreateClusterClient(ctx context.Context, clusterID, name
 	return created, apiError(err, response)
 }
 
-func (c *consoleClient) GetClusterClient(ctx context.Context, clusterID, clientID string) (*console.ClusterClientConnectionDetails, error) {
-	client, response, err := c.api.GetClient(ctx, clusterID, clientID).Execute()
-	return client, apiError(err, response)
+// clusterClient is a cluster client as it exists in the Console. The client
+// secret is only returned once, by CreateClusterClient.
+type clusterClient struct {
+	ClientID               string
+	Name                   string
+	Scopes                 []string
+	ZeebeAddress           string
+	AuthorizationServerURL string
+}
+
+// GetClusterClient returns the client with its connection details and scopes,
+// or errNotFound.
+func (c *consoleClient) GetClusterClient(ctx context.Context, clusterID, clientID string) (*clusterClient, error) {
+	details, response, err := c.api.GetClient(ctx, clusterID, clientID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	// Only the client list carries the scopes.
+	clients, response, err := c.api.GetClients(ctx, clusterID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	for _, listed := range clients {
+		if listed.ClientId == clientID {
+			return &clusterClient{
+				ClientID:               details.ZEEBE_CLIENT_ID,
+				Name:                   details.Name,
+				Scopes:                 listed.Permissions,
+				ZeebeAddress:           details.ZEEBE_ADDRESS,
+				AuthorizationServerURL: details.ZEEBE_AUTHORIZATION_SERVER_URL,
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: client %q in cluster %s", errNotFound, clientID, clusterID)
 }
 
 func (c *consoleClient) DeleteClusterClient(ctx context.Context, clusterID, clientID string) error {

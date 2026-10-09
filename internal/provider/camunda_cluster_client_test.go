@@ -8,6 +8,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
+func clusterClientImportID(s *terraform.State) (string, error) {
+	client := s.RootModule().Resources["camunda_cluster_client.test"].Primary.Attributes
+	return client["cluster_id"] + "/" + client["zeebe_client_id"], nil
+}
+
 func clusterClientConfig(f *fakeConsole, name string) string {
 	return clusterConfig(f, "cluster", fakeTrialPlan, false) + fmt.Sprintf(`
 resource "camunda_cluster_client" "test" {
@@ -52,6 +57,32 @@ func TestClusterClientResource(t *testing.T) {
 					resource.TestCheckResourceAttrSet("camunda_cluster_client.test", "zeebe_client_id"),
 					resource.TestCheckResourceAttr("camunda_cluster_client.test", "zeebe_address", fakeZeebeAddress),
 				),
+			},
+			{
+				ResourceName:      "camunda_cluster_client.test",
+				ImportState:       true,
+				ImportStateIdFunc: clusterClientImportID,
+				ImportStateVerify: true,
+				// The imported id is the import ID, not the original UUID.
+				ImportStateVerifyIdentifierAttribute: "zeebe_client_id",
+				// The API returns neither the client UUID nor the secret again.
+				ImportStateVerifyIgnore: []string{"id", "secret"},
+			},
+			{
+				// Scopes changed outside Terraform force a new client.
+				PreConfig: func() {
+					state.do(func(s *consoleState) {
+						for clusterID, clients := range s.clients {
+							for clientID, client := range clients {
+								client.Permissions = []string{"Operate"}
+								s.clients[clusterID][clientID] = client
+							}
+						}
+					})
+				},
+				Config:             clusterClientConfig(f, "worker"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
 			},
 			{
 				// Renaming replaces the client.
