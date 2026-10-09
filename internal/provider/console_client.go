@@ -137,7 +137,7 @@ func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*cons
 // UpdateCluster sets the cluster's name and description; an empty description
 // clears it.
 func (c *consoleClient) UpdateCluster(ctx context.Context, clusterID, name, description string) error {
-	response, err := c.api.UpdateCluster(ctx, clusterID).
+	response, err := c.api.UpdateCluster(withReplayableWrite(ctx), clusterID).
 		UpdateClusterBody(console.UpdateClusterBody{Name: &name, Description: &description}).
 		Execute()
 	return apiError(err, response)
@@ -354,7 +354,7 @@ func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles 
 		orgRoles = append(orgRoles, *role)
 	}
 
-	response, err := c.api.UpdateMembers(ctx, email).
+	response, err := c.api.UpdateMembers(withReplayableWrite(ctx), email).
 		PostMemberBody(console.PostMemberBody{OrgRoles: orgRoles}).
 		Execute()
 	if err != nil {

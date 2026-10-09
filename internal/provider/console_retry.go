@@ -17,9 +17,31 @@ const (
 	defaultRateLimitMaxBackoff = 30 * time.Second
 )
 
+// replayableWriteKey marks a context whose POST or PATCH request may be
+// replayed after a 429.
+type replayableWriteKey struct{}
+
+// withReplayableWrite marks a POST or PATCH call as safe to retry. Only use it
+// for calls that set state, so applying them twice is the same as applying
+// them once; never for calls that create objects.
+func withReplayableWrite(ctx context.Context) context.Context {
+	return context.WithValue(ctx, replayableWriteKey{}, true)
+}
+
+// canReplay reports whether a request can be sent again without risking a
+// duplicate side effect. A 429 alone does not prove that the server did not
+// process the request, so non-idempotent methods are only replayed when the
+// caller opted in.
+func canReplay(req *http.Request) bool {
+	switch req.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace, http.MethodPut, http.MethodDelete:
+		return true
+	}
+	return req.Context().Value(replayableWriteKey{}) != nil
+}
+
 // rateLimitTransport retries requests that the Console API rejects with
-// 429 Too Many Requests. A rate limited request was not processed, so
-// replaying it is safe for every method.
+// 429 Too Many Requests, as long as they are safe to replay (see canReplay).
 //
 // It waits for the Retry-After header when the server sends one and otherwise
 // backs off exponentially with jitter. After maxRetries retries it returns the
@@ -47,6 +69,10 @@ func newRateLimitTransport(base http.RoundTripper) *rateLimitTransport {
 }
 
 func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !canReplay(req) {
+		return t.base.RoundTrip(req)
+	}
+
 	for attempt := 0; ; attempt++ {
 		resp, err := t.base.RoundTrip(req)
 		if err != nil || resp.StatusCode != http.StatusTooManyRequests || attempt >= t.maxRetries {

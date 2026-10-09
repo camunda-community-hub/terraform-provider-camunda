@@ -48,9 +48,10 @@ func recordingTransport(statuses []int, header http.Header) (*rateLimitTransport
 	return tr, &bodies, &sleeps
 }
 
+// newPost builds a replayable POST, as made through withReplayableWrite.
 func newPost(t *testing.T, ctx context.Context) *http.Request {
 	t.Helper()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://console.test/members/a@b.c", strings.NewReader(`{"roles":["admin"]}`))
+	req, err := http.NewRequestWithContext(withReplayableWrite(ctx), http.MethodPost, "http://console.test/members/a@b.c", strings.NewReader(`{"roles":["admin"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +217,52 @@ func TestRetryAfter(t *testing.T) {
 			got, ok := retryAfter(tc.value, now)
 			if got != tc.want || ok != tc.ok {
 				t.Errorf("retryAfter(%q) = %s, %v; want %s, %v", tc.value, got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+func TestRateLimitTransportDoesNotReplayUnsafeWrites(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPatch} {
+		t.Run(method, func(t *testing.T) {
+			tr, bodies, _ := recordingTransport([]int{429, 200}, nil)
+
+			req, err := http.NewRequest(method, "http://console.test/clusters", strings.NewReader(`{"name":"c"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			resp, err := tr.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("RoundTrip: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusTooManyRequests || len(*bodies) != 1 {
+				t.Errorf("status = %d, attempts = %d, want the first 429 returned without a retry", resp.StatusCode, len(*bodies))
+			}
+		})
+	}
+}
+
+func TestRateLimitTransportReplaysIdempotentMethods(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		t.Run(method, func(t *testing.T) {
+			tr, bodies, _ := recordingTransport([]int{429, 200}, nil)
+
+			req, err := http.NewRequest(method, "http://console.test/clusters/c1", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			resp, err := tr.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("RoundTrip: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusOK || len(*bodies) != 2 {
+				t.Errorf("status = %d, attempts = %d, want a retry that succeeds", resp.StatusCode, len(*bodies))
 			}
 		})
 	}
