@@ -150,8 +150,10 @@ func (t *rateLimitTransport) delay(resp *http.Response, attempt int) time.Durati
 	// Retrying before the time the server asked for only earns another 429, so
 	// Retry-After is never shortened. If it does not fit into the wait budget,
 	// RoundTrip gives up instead.
+	// An already elapsed Retry-After still waits minBackoff, so the retries
+	// never run back to back.
 	if d, ok := retryAfter(resp.Header.Get("Retry-After"), t.now()); ok {
-		return d
+		return max(d, t.minBackoff)
 	}
 
 	backoff := t.minBackoff << min(attempt, 30)

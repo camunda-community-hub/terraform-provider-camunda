@@ -376,3 +376,21 @@ func TestRateLimitTransportDoesNotOpenBodiesItNeverSends(t *testing.T) {
 		}
 	})
 }
+
+func TestRateLimitTransportWaitsAtLeastMinBackoffForElapsedRetryAfter(t *testing.T) {
+	past := time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat)
+
+	for name, value := range map[string]string{"zero seconds": "0", "past date": past} {
+		t.Run(name, func(t *testing.T) {
+			tr, _, sleeps := recordingTransport([]int{429, 200}, http.Header{"Retry-After": []string{value}})
+
+			if _, err := tr.RoundTrip(newPost(t, context.Background())); err != nil {
+				t.Fatalf("RoundTrip: %v", err)
+			}
+
+			if len(*sleeps) != 1 || (*sleeps)[0] != tr.minBackoff {
+				t.Errorf("slept %v, want [%s]", *sleeps, tr.minBackoff)
+			}
+		})
+	}
+}
