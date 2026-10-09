@@ -140,3 +140,18 @@ func TestConsoleClientClearsIPAllowlist(t *testing.T) {
 		t.Fatalf("expected an empty allowlist in the request, got %s", body)
 	}
 }
+
+func TestConsoleClientReadsTheDeprecatedIPWhitelist(t *testing.T) {
+	f := newFakeConsole(t)
+	f.mux.HandleFunc("GET /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		found := clusterWithStatus(r.PathValue("id"), console.CLUSTERCOMPONENTSTATUS_HEALTHY)
+		found.Ipwhitelist = []console.ClusterIpallowlistInner{{Ip: "10.0.0.1", Description: "office"}}
+		writeJSON(t, w, found)
+	})
+
+	entries, err := f.client(t).GetIPAllowlist(context.Background(), "c1")
+
+	if err != nil || len(entries) != 1 || entries[0] != (allowlistEntry{IP: "10.0.0.1", Description: "office"}) {
+		t.Fatalf("expected the deprecated allowlist, got %v, %v", entries, err)
+	}
+}

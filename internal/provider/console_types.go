@@ -15,3 +15,9 @@ type cluster struct {
 	GenerationID string
 	AutoUpdate   bool
 }
+
+// allowlistEntry is one entry of a cluster's IP allowlist.
+type allowlistEntry struct {
+	IP          string
+	Description string
+}

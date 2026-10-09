@@ -1,7 +1,6 @@
 package provider
 
 import (
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/camunda-community-hub/terraform-provider-camunda/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -96,7 +95,7 @@ func readClusterIPWhitelist(op *op, prior camundaClusterIPWhitelistData) (camund
 	prior.IPWhitelist = []ipWhitelistModel{}
 	for _, item := range allowlist {
 		prior.IPWhitelist = append(prior.IPWhitelist, ipWhitelistModel{
-			IP:          types.StringValue(item.Ip),
+			IP:          types.StringValue(item.IP),
 			Description: types.StringValue(item.Description),
 		})
 	}
@@ -106,13 +105,13 @@ func readClusterIPWhitelist(op *op, prior camundaClusterIPWhitelistData) (camund
 	return prior, nil
 }
 
-func ipAllowlistFromState(data camundaClusterIPWhitelistData) []console.ClusterIpallowlistInner {
-	entries := []console.ClusterIpallowlistInner{}
+func ipAllowlistFromState(data camundaClusterIPWhitelistData) []allowlistEntry {
+	entries := []allowlistEntry{}
 	for _, item := range data.IPWhitelist {
-		entries = append(entries, *console.NewClusterIpallowlistInner(
-			item.Description.ValueString(),
-			item.IP.ValueString(),
-		))
+		entries = append(entries, allowlistEntry{
+			IP:          item.IP.ValueString(),
+			Description: item.Description.ValueString(),
+		})
 	}
 	return entries
 }

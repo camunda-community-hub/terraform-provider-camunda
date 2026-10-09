@@ -200,26 +200,34 @@ func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string
 }
 
 // GetIPAllowlist returns the cluster's IP allowlist.
-func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([]console.ClusterIpallowlistInner, error) {
-	cluster, err := c.getAPICluster(ctx, clusterID)
+func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([]allowlistEntry, error) {
+	found, err := c.getAPICluster(ctx, clusterID)
 	if err != nil {
 		return nil, err
 	}
-	if cluster.Ipallowlist != nil {
-		return cluster.Ipallowlist, nil
+
+	listed := found.Ipallowlist
+	if listed == nil {
+		// Older API responses only carry the deprecated field.
+		listed = found.Ipwhitelist
 	}
-	// Older API responses only carry the deprecated field.
-	return cluster.Ipwhitelist, nil
+
+	entries := []allowlistEntry{}
+	for _, entry := range listed {
+		entries = append(entries, allowlistEntry{IP: entry.Ip, Description: entry.Description})
+	}
+	return entries, nil
 }
 
 // SetIPAllowlist replaces the cluster's IP allowlist; an empty list removes it.
-func (c *consoleClient) SetIPAllowlist(ctx context.Context, clusterID string, entries []console.ClusterIpallowlistInner) error {
-	if entries == nil {
-		entries = []console.ClusterIpallowlistInner{}
+func (c *consoleClient) SetIPAllowlist(ctx context.Context, clusterID string, entries []allowlistEntry) error {
+	body := []console.ClusterIpallowlistInner{}
+	for _, entry := range entries {
+		body = append(body, *console.NewClusterIpallowlistInner(entry.Description, entry.IP))
 	}
 
 	response, err := c.api.UpdateIpAllowlist(ctx, clusterID).
-		IpAllowListBody(console.IpAllowListBody{Ipallowlist: entries}).
+		IpAllowListBody(console.IpAllowListBody{Ipallowlist: body}).
 		Execute()
 	return apiError(err, response)
 }
