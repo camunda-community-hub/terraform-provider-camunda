@@ -95,7 +95,8 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		}
 
 		delay := t.delay(resp, attempt)
-		if waited+delay > t.maxWait {
+		// Written as a subtraction so a saturated Retry-After cannot overflow.
+		if delay > t.maxWait-waited {
 			return resp, nil
 		}
 		waited += delay
@@ -146,8 +147,11 @@ func rewind(req *http.Request) (*http.Request, error) {
 
 // delay is how long to wait before retry number attempt+1.
 func (t *rateLimitTransport) delay(resp *http.Response, attempt int) time.Duration {
+	// Retrying before the time the server asked for only earns another 429, so
+	// Retry-After is never shortened. If it does not fit into the wait budget,
+	// RoundTrip gives up instead.
 	if d, ok := retryAfter(resp.Header.Get("Retry-After"), t.now()); ok {
-		return min(d, t.maxBackoff)
+		return d
 	}
 
 	backoff := t.minBackoff << min(attempt, 30)

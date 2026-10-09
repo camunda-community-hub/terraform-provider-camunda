@@ -117,15 +117,27 @@ func TestRateLimitTransportHonorsRetryAfter(t *testing.T) {
 	}
 }
 
-func TestRateLimitTransportCapsRetryAfter(t *testing.T) {
-	tr, _, sleeps := recordingTransport([]int{429, 200}, http.Header{"Retry-After": []string{"3600"}})
+func TestRateLimitTransportReturnsThe429WhenRetryAfterExceedsTheBudget(t *testing.T) {
+	for name, retryAfter := range map[string]string{
+		"longer than the budget":         "3600",
+		"overflows a duration":           "9223372037",
+		"saturates to the maximum value": "9223372036",
+	} {
+		t.Run(name, func(t *testing.T) {
+			tr, bodies, sleeps := recordingTransport([]int{429, 200}, http.Header{"Retry-After": []string{retryAfter}})
 
-	if _, err := tr.RoundTrip(newPost(t, context.Background())); err != nil {
-		t.Fatalf("RoundTrip: %v", err)
-	}
+			resp, err := tr.RoundTrip(newPost(t, context.Background()))
+			if err != nil {
+				t.Fatalf("RoundTrip: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
 
-	if len(*sleeps) != 1 || (*sleeps)[0] != tr.maxBackoff {
-		t.Errorf("slept %v, want [%s]", *sleeps, tr.maxBackoff)
+			// Waiting less than asked would only produce another 429.
+			if resp.StatusCode != http.StatusTooManyRequests || len(*sleeps) != 0 || len(*bodies) != 1 {
+				t.Errorf("status = %d, sleeps = %v, attempts = %d; want the 429 returned without waiting or retrying",
+					resp.StatusCode, *sleeps, len(*bodies))
+			}
+		})
 	}
 }
 
@@ -307,18 +319,6 @@ func TestRateLimitTransportDefaultsStayWithinTheWaitBudget(t *testing.T) {
 	}
 	if total > tr.maxWait {
 		t.Errorf("waited %s in total, want at most %s", total, tr.maxWait)
-	}
-}
-
-func TestRateLimitTransportCapsHugeRetryAfter(t *testing.T) {
-	tr, _, sleeps := recordingTransport([]int{429, 200}, http.Header{"Retry-After": []string{"9223372037"}})
-
-	if _, err := tr.RoundTrip(newPost(t, context.Background())); err != nil {
-		t.Fatalf("RoundTrip: %v", err)
-	}
-
-	if len(*sleeps) != 1 || (*sleeps)[0] != tr.maxBackoff {
-		t.Errorf("slept %v, want [%s] rather than an immediate retry", *sleeps, tr.maxBackoff)
 	}
 }
 
