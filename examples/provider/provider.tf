@@ -1,11 +1,15 @@
-# Get the client ID and client secret from https://console.cloud.camunda.io/
-variable "camunda_client_id" {}
-variable "camunda_client_secret" {}
-
-provider "camunda" {
-  client_id     = var.camunda_client_id
-  client_secret = var.camunda_client_secret
+terraform {
+  required_providers {
+    camunda = {
+      source  = "camunda-community-hub/camunda"
+      version = "~> 0.1"
+    }
+  }
 }
+
+# Reads the credentials from CAMUNDA_CONSOLE_CLIENT_ID and
+# CAMUNDA_CONSOLE_CLIENT_SECRET. See "Authentication" below.
+provider "camunda" {}
 
 # The channel containing the most recent version of Zeebe.
 data "camunda_channel" "alpha" {
@@ -29,6 +33,12 @@ resource "camunda_cluster" "test" {
   generation = data.camunda_channel.alpha.default_generation_id
   region     = data.camunda_region.trial.id
   plan_type  = data.camunda_cluster_plan_type.trial.id
+
+  # Changing plan_type, generation or auto_update replaces the cluster and
+  # deletes its data. prevent_destroy makes such a plan fail instead.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 output "cluster_id" {

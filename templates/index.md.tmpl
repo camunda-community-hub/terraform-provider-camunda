@@ -1,16 +1,60 @@
 ---
 page_title: "Provider: Camunda"
 description: |-
-  The Camunda provider allows to configure resources on the Camunda SaaS platform.
+  The Camunda provider manages clusters, API clients, connector secrets, IP allowlists and organization members on Camunda 8 SaaS.
 ---
 
-# Camunda SaaS Provider
+# Camunda Provider
 
-The Camunda providers providers resources to configure clusters, clients, etc.
-on the [Camunda SaaS](https://camunda.com/platform/) platform.
+The Camunda provider manages resources on [Camunda 8 SaaS](https://camunda.com/platform/)
+through the [Administration API](https://docs.camunda.io/docs/apis-tools/administration-api/administration-api-reference/):
+clusters, cluster API clients, connector secrets, IP allowlists and organization members.
 
 ## Example Usage
 
 {{ tffile "examples/provider/provider.tf" }}
+
+## Authentication
+
+The provider authenticates with Administration API client credentials. To create them:
+
+1. In Camunda Hub, click **Organization > Manage organization**.
+1. In the **Administration API** tab, click **Create new credentials**.
+1. Grant the scopes for the resources you manage:
+
+   | Resource | Scope |
+   |---|---|
+   | `camunda_cluster` and the `camunda_channel`, `camunda_region` and `camunda_cluster_plan_type` data sources | Cluster |
+   | `camunda_cluster_client` | Zeebe Client |
+   | `camunda_cluster_connector_secret` | Connector Secrets |
+   | `camunda_cluster_ip_whitelist` | IP allowlist |
+   | `camunda_organization_member` | Members |
+
+1. Copy the client ID and client secret. The secret is shown only once.
+
+Pass the credentials through environment variables, so they stay out of your configuration:
+
+```shell
+export CAMUNDA_CONSOLE_CLIENT_ID="<client-id>"
+export CAMUNDA_CONSOLE_CLIENT_SECRET="<client-secret>"
+```
+
+These are the variable names Camunda Hub shows when it creates the credentials. Values set in the
+provider block take precedence over the environment.
+
+| Argument | Environment variable | Default |
+|---|---|---|
+| `client_id` | `CAMUNDA_CONSOLE_CLIENT_ID` | — |
+| `client_secret` | `CAMUNDA_CONSOLE_CLIENT_SECRET` | — |
+| `api_url` | `CAMUNDA_CONSOLE_BASE_URL` | `https://api.cloud.camunda.io` |
+| `token_url` | `CAMUNDA_OAUTH_URL` | `https://login.cloud.camunda.io/oauth/token` |
+| `audience` | `CAMUNDA_CONSOLE_OAUTH_AUDIENCE` | the host of `api_url` |
+
+## Protecting clusters
+
+The Administration API can't change a cluster's `plan_type`, `generation` or `auto_update` in place,
+so changing them replaces the cluster, which deletes it and all its data. Add
+`lifecycle { prevent_destroy = true }` to clusters you can't lose, as in the example above,
+so such a plan fails instead.
 
 {{ .SchemaMarkdown | trimspace }}
