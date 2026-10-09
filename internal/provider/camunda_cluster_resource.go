@@ -2,8 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -16,11 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
-
-var _ resource.Resource = &CamundaClusterResource{}
-var _ resource.ResourceWithImportState = &CamundaClusterResource{}
 
 type camundaClusterData struct {
 	Id         types.String `tfsdk:"id"`
@@ -35,20 +29,30 @@ type camundaClusterData struct {
 	CurrentGeneration types.String `tfsdk:"current_generation"`
 }
 
-type CamundaClusterResource struct {
-	client *consoleClient
-}
-
 func NewCamundaClusterResource() resource.Resource {
-	return &CamundaClusterResource{}
+	return &managedResource[camundaClusterData]{
+		typeName: "_cluster",
+		noun:     "cluster",
+		schema:   clusterSchema,
+		describe: func(d camundaClusterData) string { return d.Id.ValueString() },
+		create:   createCluster,
+		// Creating a cluster takes some time, wait until it's marked healthy.
+		awaitReady: func(op *op, created camundaClusterData) error {
+			return op.client.WaitClusterHealthy(op.ctx, created.Id.ValueString())
+		},
+		read:   readCluster,
+		update: updateCluster,
+		delete: func(op *op, prior camundaClusterData) error {
+			return op.client.DeleteCluster(op.ctx, prior.Id.ValueString())
+		},
+		importID: func(id string) (camundaClusterData, error) {
+			return camundaClusterData{Id: types.StringValue(id)}, nil
+		},
+	}
 }
 
-func (r *CamundaClusterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_cluster"
-}
-
-func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
+func clusterSchema() schema.Schema {
+	return schema.Schema{
 		MarkdownDescription: "Manage a cluster on Camunda SaaS. " +
 			"Only `name` and `description` can be updated in place. Changing `plan_type`, `generation` " +
 			"(unless `auto_update` is enabled), `auto_update`, `channel` or `region` destroys and recreates the cluster, " +
@@ -111,154 +115,42 @@ func (r *CamundaClusterResource) Schema(ctx context.Context, req resource.Schema
 	}
 }
 
-func (r *CamundaClusterResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Provider not yet configured
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, diags := consoleClientFromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	r.client = client
-}
-
-func (r *CamundaClusterResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data camundaClusterData
-
-	diags := req.Plan.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	clusterId, err := r.client.CreateCluster(ctx, console.CreateClusterRequest{
-		Name:         data.Name.ValueString(),
-		PlanTypeId:   data.PlanType.ValueString(),
-		ChannelId:    data.Channel.ValueString(),
-		GenerationId: data.Generation.ValueString(),
-		RegionId:     data.Region.ValueString(),
-		AutoUpdate:   data.AutoUpdate.ValueBoolPointer(),
-		Description:  data.Description.ValueStringPointer(),
+func createCluster(op *op, plan camundaClusterData) (camundaClusterData, error) {
+	clusterID, err := op.client.CreateCluster(op.ctx, console.CreateClusterRequest{
+		Name:         plan.Name.ValueString(),
+		PlanTypeId:   plan.PlanType.ValueString(),
+		ChannelId:    plan.Channel.ValueString(),
+		GenerationId: plan.Generation.ValueString(),
+		RegionId:     plan.Region.ValueString(),
+		AutoUpdate:   plan.AutoUpdate.ValueBoolPointer(),
+		Description:  plan.Description.ValueStringPointer(),
 	})
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to create cluster",
-			fmt.Sprintf("Unable to create cluster, got error: %s", err),
-		)
-		return
+		return plan, err
 	}
 
-	data.Id = types.StringValue(clusterId)
-	data.CurrentGeneration = data.Generation
-
-	tflog.Info(ctx, "Camunda cluster created", map[string]interface{}{
-		"clusterID": data.Id,
-	})
-
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	// Creating a cluster takes some time, wait until it's marked healthy.
-	if err := r.client.WaitClusterHealthy(ctx, clusterId); err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to create cluster",
-			fmt.Sprintf("Cluster %s never got healthy; got error: %s", clusterId, err),
-		)
-		return
-	}
-
-	cluster, err := r.client.GetCluster(ctx, clusterId)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", clusterId, err),
-		)
-		return
-	}
-	data.setFromAPI(cluster)
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	plan.Id = types.StringValue(clusterID)
+	plan.CurrentGeneration = plan.Generation
+	return plan, nil
 }
 
-func (r *CamundaClusterResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data camundaClusterData
-
-	diags := req.State.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	cluster, err := r.client.GetCluster(ctx, data.Id.ValueString())
-	if errors.Is(err, errNotFound) {
-		resp.State.RemoveResource(ctx)
-		return
-	}
-
+func readCluster(op *op, prior camundaClusterData) (camundaClusterData, error) {
+	cluster, err := op.client.GetCluster(op.ctx, prior.Id.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Client Error",
-			fmt.Sprintf("Unable to read cluster ID=%s, got error: %s", data.Id.ValueString(), err),
-		)
-		return
+		return prior, err
 	}
 
-	data.setFromAPI(cluster)
-
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	prior.setFromAPI(cluster)
+	return prior, nil
 }
 
-func (r *CamundaClusterResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state camundaClusterData
-
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+func updateCluster(op *op, prior, plan camundaClusterData) (camundaClusterData, error) {
 	// Every other change forces replacement, and a generation change while
 	// auto_update is on needs no API call.
-	if !plan.Name.Equal(state.Name) || !plan.Description.Equal(state.Description) {
-		err := r.client.UpdateCluster(ctx, state.Id.ValueString(), plan.Name.ValueString(), plan.Description.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Client Error",
-				fmt.Sprintf("Unable to update cluster ID=%s, got error: %s", state.Id.ValueString(), err),
-			)
-			return
-		}
+	if plan.Name.Equal(prior.Name) && plan.Description.Equal(prior.Description) {
+		return plan, nil
 	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-}
-
-func (r *CamundaClusterResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data camundaClusterData
-
-	diags := req.State.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	err := r.client.DeleteCluster(ctx, data.Id.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Client Error",
-			fmt.Sprintf("Unable to delete cluster ID=%s, got error: %s", data.Id.ValueString(), err),
-		)
-		return
-	}
-}
-
-func (r *CamundaClusterResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	return plan, op.client.UpdateCluster(op.ctx, prior.Id.ValueString(), plan.Name.ValueString(), plan.Description.ValueString())
 }
 
 // generationChangeReplaces lets the generation change in place while
