@@ -27,6 +27,12 @@ output "data" {
 output "generation" {
   value = data.camunda_channel.stable.allowed_generations
 }
+
+# Look up a generation ID by its name, for example to pin a cluster to a
+# generation other than the channel's default.
+output "generation_8_8" {
+  value = data.camunda_channel.stable.allowed_generation_ids["8.8"]
+}
 ```
 
 The channel can then be used when creating a new cluster, and also to select the
@@ -54,6 +60,7 @@ resource "camunda_cluster" "test" {
 
 ### Read-Only
 
+- `allowed_generation_ids` (Map of String) The IDs of the allowed generations for this channel, keyed by generation name. A cluster on an older generation may run one that is no longer allowed and so isn't listed here; after importing such a cluster, its `current_generation` attribute holds the generation ID it runs.
 - `allowed_generations` (Attributes List) The allowed generations for this channel (see [below for nested schema](#nestedatt--allowed_generations))
 - `default_generation_id` (String) The ID of the default generation for this channel
 - `default_generation_name` (String) The name of the default generation for this channel

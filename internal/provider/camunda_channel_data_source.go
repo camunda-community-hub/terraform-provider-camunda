@@ -24,6 +24,7 @@ type channelDataSourceData struct {
 	DefaultGenerationName types.String `tfsdk:"default_generation_name"`
 	DefaultGenerationId   types.String `tfsdk:"default_generation_id"`
 	AllowedGenerations    types.List   `tfsdk:"allowed_generations"`
+	AllowedGenerationIds  types.Map    `tfsdk:"allowed_generation_ids"`
 
 	// https://github.com/hashicorp/terraform-plugin-framework/issues/191
 	// DefaultGeneration generation   `tfsdk:"default_generation"`
@@ -81,6 +82,13 @@ func (d *CamundaChannelDataSource) Schema(ctx context.Context, req datasource.Sc
 				MarkdownDescription: "The allowed generations for this channel",
 				Computed:            true,
 			},
+			"allowed_generation_ids": schema.MapAttribute{
+				MarkdownDescription: "The IDs of the allowed generations for this channel, keyed by generation name. " +
+					"A cluster on an older generation may run one that is no longer allowed and so isn't listed here; " +
+					"after importing such a cluster, its `current_generation` attribute holds the generation ID it runs.",
+				ElementType: types.StringType,
+				Computed:    true,
+			},
 		},
 	}
 }
@@ -129,11 +137,13 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 			data.DefaultGenerationName = types.StringValue(channel.DefaultGeneration.Name)
 
 			var allowedGenerations []Generation
+			allowedGenerationIds := map[string]string{}
 			for _, generation := range channel.AllowedGenerations {
 				allowedGenerations = append(allowedGenerations, Generation{
 					Id:   generation.Uuid,
 					Name: generation.Name,
 				})
+				allowedGenerationIds[generation.Name] = generation.Uuid
 			}
 
 			allowedGenerationsTF, diags := types.ListValueFrom(ctx, types.ObjectType{
@@ -144,6 +154,10 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 			}, allowedGenerations)
 			resp.Diagnostics.Append(diags...)
 			data.AllowedGenerations = allowedGenerationsTF
+
+			allowedGenerationIdsTF, diags := types.MapValueFrom(ctx, types.StringType, allowedGenerationIds)
+			resp.Diagnostics.Append(diags...)
+			data.AllowedGenerationIds = allowedGenerationIdsTF
 
 			diags = resp.State.Set(ctx, &data)
 			resp.Diagnostics.Append(diags...)
