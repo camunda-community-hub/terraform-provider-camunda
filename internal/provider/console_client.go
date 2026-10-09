@@ -402,7 +402,29 @@ func (c *consoleClient) DeleteMember(ctx context.Context, email string) error {
 
 // GetParameters returns the channels, plan types and regions available to the
 // organization.
-func (c *consoleClient) GetParameters(ctx context.Context) (*console.Parameters, error) {
+func (c *consoleClient) GetParameters(ctx context.Context) (*parameters, error) {
 	params, response, err := c.api.GetParameters(ctx).Execute()
-	return params, apiError(err, response)
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	result := &parameters{}
+	for _, ch := range params.Channels {
+		listed := channel{
+			ID:                ch.Uuid,
+			Name:              ch.Name,
+			DefaultGeneration: namedID{ID: ch.DefaultGeneration.Uuid, Name: ch.DefaultGeneration.Name},
+		}
+		for _, generation := range ch.AllowedGenerations {
+			listed.AllowedGenerations = append(listed.AllowedGenerations, namedID{ID: generation.Uuid, Name: generation.Name})
+		}
+		result.Channels = append(result.Channels, listed)
+	}
+	for _, region := range params.Regions {
+		result.Regions = append(result.Regions, namedID{ID: region.Uuid, Name: region.Name})
+	}
+	for _, planType := range params.ClusterPlanTypes {
+		result.PlanTypes = append(result.PlanTypes, namedID{ID: planType.Uuid, Name: planType.Name})
+	}
+	return result, nil
 }

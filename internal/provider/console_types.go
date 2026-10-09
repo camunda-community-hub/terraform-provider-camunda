@@ -46,3 +46,24 @@ type member struct {
 	// Owner is set for the organization owner, whom the API can't change.
 	Owner bool
 }
+
+// parameters are the channels, regions and plan types clusters can use.
+type parameters struct {
+	Channels  []channel
+	Regions   []namedID
+	PlanTypes []namedID
+}
+
+// channel is a release channel and the generations a cluster can use in it.
+type channel struct {
+	ID                 string
+	Name               string
+	DefaultGeneration  namedID
+	AllowedGenerations []namedID
+}
+
+// namedID is anything the Console identifies by ID and shows by name.
+type namedID struct {
+	ID   string
+	Name string
+}

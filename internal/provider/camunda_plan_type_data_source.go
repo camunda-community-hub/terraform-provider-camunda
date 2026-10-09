@@ -75,9 +75,9 @@ func (d *CamundaClusterPlanTypeDataSource) Read(ctx context.Context, req datasou
 		return
 	}
 
-	for _, clusterPlanType := range params.ClusterPlanTypes {
+	for _, clusterPlanType := range params.PlanTypes {
 		if clusterPlanType.Name == data.Name.ValueString() {
-			data.Id = types.StringValue(clusterPlanType.Uuid)
+			data.Id = types.StringValue(clusterPlanType.ID)
 			data.Name = types.StringValue(clusterPlanType.Name)
 
 			diags = resp.State.Set(ctx, &data)
