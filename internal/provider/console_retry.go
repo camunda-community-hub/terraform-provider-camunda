@@ -68,7 +68,7 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		})
 
 		// Release the connection before waiting.
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if err := t.sleep(req.Context(), delay); err != nil {
 			return nil, fmt.Errorf("giving up on rate limited request: %w", err)

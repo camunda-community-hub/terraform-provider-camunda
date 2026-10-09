@@ -89,7 +89,7 @@ func TestRateLimitTransportBackoffGrowsWithJitterAndIsCapped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RoundTrip: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if len(*sleeps) != 8 {
 		t.Fatalf("slept %d times, want 8", len(*sleeps))
@@ -134,7 +134,7 @@ func TestRateLimitTransportGivesUpWithLastResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RoundTrip: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("status = %d, want 429", resp.StatusCode)
@@ -187,7 +187,7 @@ func TestRateLimitTransportDoesNotRetryBodiesItCannotReplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RoundTrip: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusTooManyRequests || len(*bodies) != 1 {
 		t.Errorf("status = %d, attempts = %d, want the first 429 returned", resp.StatusCode, len(*bodies))
