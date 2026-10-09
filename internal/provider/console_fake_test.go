@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -438,6 +439,10 @@ func (s *consoleState) updateMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := r.PathValue("email")
+	if s.isOwner(email) {
+		http.Error(w, `{"message":"the organization owner can't be changed"}`, http.StatusBadRequest)
+		return
+	}
 	member := console.Member{Email: email, Name: email, Roles: []console.OrganizationRole{}}
 	for _, role := range req.OrgRoles {
 		member.Roles = append(member.Roles, console.OrganizationRole(role))
@@ -452,6 +457,16 @@ func (s *consoleState) deleteMember(w http.ResponseWriter, r *http.Request) {
 		notFound(w, "member")
 		return
 	}
+	if s.isOwner(email) {
+		http.Error(w, `{"message":"the organization owner can't be removed"}`, http.StatusBadRequest)
+		return
+	}
 	delete(s.members, email)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isOwner reports whether the member is the organization owner, whom the fake,
+// like the real API, refuses to change or remove.
+func (s *consoleState) isOwner(email string) bool {
+	return slices.Contains(s.members[email].Roles, console.ORGANIZATIONROLE_OWNER)
 }

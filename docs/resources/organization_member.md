@@ -3,12 +3,15 @@
 page_title: "camunda_organization_member Resource - terraform-provider-camunda"
 subcategory: ""
 description: |-
-  Manage a member of an organization
+  Manage a member of an organization.
+  The organization owner's roles can't be changed through the API. For the owner, the provider records roles in state without sending them, and destroying the resource only removes it from state. Roles that can't be assigned, such as owner, are never read into roles.
 ---
 
 # camunda_organization_member (Resource)
 
-Manage a member of an organization
+Manage a member of an organization.
+
+The organization owner's roles can't be changed through the API. For the owner, the provider records `roles` in state without sending them, and destroying the resource only removes it from state. Roles that can't be assigned, such as `owner`, are never read into `roles`.
 
 ## Example Usage
 
