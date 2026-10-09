@@ -1,21 +1,10 @@
 package provider
 
 import (
-	"context"
 	"testing"
-
-	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
-	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
-func TestCamundaClusterConnectorSecretImportState(t *testing.T) {
-	ctx := context.Background()
-	r := &CamundaClusterConnectorSecretResource{}
-
-	schemaResp := &resource.SchemaResponse{}
-	r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
-
+func TestCamundaClusterConnectorSecretImportID(t *testing.T) {
 	tests := map[string]struct {
 		id          string
 		wantCluster string
@@ -32,28 +21,16 @@ func TestCamundaClusterConnectorSecretImportState(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			resp := &resource.ImportStateResponse{
-				State: tfsdk.State{
-					Schema: schemaResp.Schema,
-					Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
-				},
-			}
-
-			r.ImportState(ctx, resource.ImportStateRequest{ID: tc.id}, resp)
+			data, err := importClusterConnectorSecret(tc.id)
 
 			if tc.wantErr {
-				if !resp.Diagnostics.HasError() {
+				if err == nil {
 					t.Fatalf("expected error for import ID %q", tc.id)
 				}
 				return
 			}
-			if resp.Diagnostics.HasError() {
-				t.Fatalf("unexpected error: %v", resp.Diagnostics)
-			}
-
-			var data camundaClusterConnectorSecret
-			if diags := resp.State.Get(ctx, &data); diags.HasError() {
-				t.Fatalf("reading state: %v", diags)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 			if data.ClusterId.ValueString() != tc.wantCluster || data.Name.ValueString() != tc.wantName {
 				t.Errorf("got cluster_id=%q name=%q, want %q %q", data.ClusterId.ValueString(), data.Name.ValueString(), tc.wantCluster, tc.wantName)

@@ -1,24 +1,16 @@
 package provider
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
-
-var _ resource.Resource = &CamundaClusterConnectorSecretResource{}
-var _ resource.ResourceWithImportState = &CamundaClusterConnectorSecretResource{}
 
 type camundaClusterConnectorSecret struct {
 	ClusterId types.String `tfsdk:"cluster_id"`
@@ -26,20 +18,31 @@ type camundaClusterConnectorSecret struct {
 	Value     types.String `tfsdk:"value"`
 }
 
-type CamundaClusterConnectorSecretResource struct {
-	client *consoleClient
-}
-
 func NewCamundaClusterConnectorSecretResource() resource.Resource {
-	return &CamundaClusterConnectorSecretResource{}
+	return &managedResource[camundaClusterConnectorSecret]{
+		typeName: "_cluster_connector_secret",
+		noun:     "cluster connector secret",
+		schema:   clusterConnectorSecretSchema,
+		describe: func(d camundaClusterConnectorSecret) string {
+			return d.Name.ValueString() + " in cluster " + d.ClusterId.ValueString()
+		},
+		create: func(op *op, plan camundaClusterConnectorSecret) (camundaClusterConnectorSecret, error) {
+			return plan, op.client.CreateSecret(op.ctx, plan.ClusterId.ValueString(), plan.Name.ValueString(), plan.Value.ValueString())
+		},
+		read: func(op *op, prior camundaClusterConnectorSecret) (camundaClusterConnectorSecret, error) {
+			value, err := op.client.GetSecret(op.ctx, prior.ClusterId.ValueString(), prior.Name.ValueString())
+			prior.Value = types.StringValue(value)
+			return prior, err
+		},
+		delete: func(op *op, prior camundaClusterConnectorSecret) error {
+			return op.client.DeleteSecret(op.ctx, prior.ClusterId.ValueString(), prior.Name.ValueString())
+		},
+		importID: importClusterConnectorSecret,
+	}
 }
 
-func (r *CamundaClusterConnectorSecretResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_cluster_connector_secret"
-}
-
-func (r *CamundaClusterConnectorSecretResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
+func clusterConnectorSecretSchema() schema.Schema {
+	return schema.Schema{
 		MarkdownDescription: "Manage a cluster connector secret on Camunda SaaS.",
 
 		Attributes: map[string]schema.Attribute{
@@ -72,109 +75,14 @@ func (r *CamundaClusterConnectorSecretResource) Schema(ctx context.Context, req 
 	}
 }
 
-func (r *CamundaClusterConnectorSecretResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Provider not yet configured
-	if req.ProviderData == nil {
-		return
+// importClusterConnectorSecret takes "<cluster_id>/<secret_name>".
+func importClusterConnectorSecret(id string) (camundaClusterConnectorSecret, error) {
+	clusterID, name, diags := splitImportID(id, "<cluster_id>/<secret_name>")
+	if diags.HasError() {
+		return camundaClusterConnectorSecret{}, diagsError(diags)
 	}
-
-	client, diags := consoleClientFromProviderData(req.ProviderData)
-	resp.Diagnostics.Append(diags...)
-	r.client = client
-}
-
-func (r *CamundaClusterConnectorSecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data camundaClusterConnectorSecret
-
-	diags := req.Plan.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	err := r.client.CreateSecret(ctx, data.ClusterId.ValueString(), data.Name.ValueString(), data.Value.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to create cluster connector secret",
-			fmt.Sprintf("Unable to create cluster connector secret, got error: %s", err),
-		)
-		return
-	}
-
-	tflog.Info(ctx, "Camunda cluster connector secret created", map[string]interface{}{
-		"Name":      data.Name,
-		"ClusterId": data.ClusterId,
-	})
-
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-}
-
-func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data camundaClusterConnectorSecret
-
-	diags := req.State.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	value, err := r.client.GetSecret(ctx, data.ClusterId.ValueString(), data.Name.ValueString())
-	if errors.Is(err, errNotFound) {
-		resp.State.RemoveResource(ctx)
-		return
-	}
-
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Connector Secret Error",
-			fmt.Sprintf("Unable to read cluster connector secrets Name=%s, ClusterID=%s, got error: %s",
-				data.Name.ValueString(), data.ClusterId.ValueString(), err),
-		)
-		return
-	}
-
-	data.Value = types.StringValue(value)
-
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-}
-
-func (r *CamundaClusterConnectorSecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	resp.Diagnostics.Append(unexpectedUpdate())
-}
-
-func (r *CamundaClusterConnectorSecretResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data camundaClusterConnectorSecret
-
-	diags := req.State.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	err := r.client.DeleteSecret(ctx, data.ClusterId.ValueString(), data.Name.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Connector Secret Error",
-			fmt.Sprintf("Unable to delete cluster connector secret Name=%s, ClusterId=%s, got error: %s",
-				data.Name.ValueString(), data.ClusterId.ValueString(), err),
-		)
-		return
-	}
-}
-
-// ImportState takes "<cluster_id>/<secret_name>".
-func (r *CamundaClusterConnectorSecretResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	clusterID, name, diags := splitImportID(req.ID, "<cluster_id>/<secret_name>")
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("cluster_id"), clusterID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
+	return camundaClusterConnectorSecret{
+		ClusterId: types.StringValue(clusterID),
+		Name:      types.StringValue(name),
+	}, nil
 }
