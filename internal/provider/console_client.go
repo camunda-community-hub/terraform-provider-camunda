@@ -78,7 +78,12 @@ func newConsoleClient(ctx context.Context, cfg consoleClientConfig) (*consoleCli
 	apiCfg.Scheme = apiURL.Scheme
 	apiCfg.Host = apiURL.Host
 	apiCfg.Debug = cfg.Debug
-	apiCfg.HTTPClient = oauth2.NewClient(context.WithoutCancel(ctx), tokenSource)
+	apiCfg.HTTPClient = &http.Client{
+		Transport: &oauth2.Transport{
+			Source: tokenSource,
+			Base:   newRateLimitTransport(http.DefaultTransport),
+		},
+	}
 
 	return &consoleClient{
 		api:                 console.NewAPIClient(apiCfg).DefaultAPI,

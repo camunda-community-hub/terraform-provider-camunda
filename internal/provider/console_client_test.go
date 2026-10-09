@@ -140,3 +140,23 @@ func TestConsoleClientClearsIPAllowlist(t *testing.T) {
 		t.Fatalf("expected an empty allowlist in the request, got %s", body)
 	}
 }
+
+func TestConsoleClientRetriesRateLimitedRequests(t *testing.T) {
+	f := newFakeConsole(t)
+	var calls atomic.Int32
+	f.mux.HandleFunc("GET /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) < 3 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "local_rate_limited", http.StatusTooManyRequests)
+			return
+		}
+		writeJSON(t, w, clusterWithStatus(r.PathValue("id"), console.CLUSTERCOMPONENTSTATUS_HEALTHY))
+	})
+
+	if _, err := f.client(t).GetCluster(context.Background(), "c1"); err != nil {
+		t.Fatalf("GetCluster: %v", err)
+	}
+	if got := calls.Load(); got != 3 {
+		t.Errorf("calls = %d, want 3", got)
+	}
+}
