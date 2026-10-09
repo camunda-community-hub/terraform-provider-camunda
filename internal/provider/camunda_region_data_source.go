@@ -79,7 +79,7 @@ func (d *CamundaRegionDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	for _, region := range params.Regions {
 		if region.Name == wantedRegion {
-			data.Id = types.StringValue(region.Uuid)
+			data.Id = types.StringValue(region.ID)
 			data.Name = types.StringValue(region.Name)
 
 			diags = resp.State.Set(ctx, &data)

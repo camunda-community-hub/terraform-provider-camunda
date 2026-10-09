@@ -123,7 +123,19 @@ func apiError(err error, response *http.Response) error {
 
 // Clusters
 
-func (c *consoleClient) CreateCluster(ctx context.Context, req console.CreateClusterRequest) (string, error) {
+func (c *consoleClient) CreateCluster(ctx context.Context, cl cluster) (string, error) {
+	req := console.CreateClusterRequest{
+		Name:         cl.Name,
+		PlanTypeId:   cl.PlanTypeID,
+		ChannelId:    cl.ChannelID,
+		GenerationId: cl.GenerationID,
+		RegionId:     cl.RegionID,
+		AutoUpdate:   &cl.AutoUpdate,
+	}
+	if cl.Description != "" {
+		req.Description = &cl.Description
+	}
+
 	created, response, err := c.api.CreateCluster(ctx).CreateClusterRequest(req).Execute()
 	if err != nil {
 		return "", apiError(err, response)
@@ -131,9 +143,27 @@ func (c *consoleClient) CreateCluster(ctx context.Context, req console.CreateClu
 	return created.GetClusterId(), nil
 }
 
-func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*console.Cluster, error) {
-	cluster, response, err := c.api.GetCluster(ctx, clusterID).Execute()
-	return cluster, apiError(err, response)
+// GetCluster returns the cluster, or errNotFound.
+func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*cluster, error) {
+	found, err := c.getAPICluster(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	return &cluster{
+		ID:           found.Uuid,
+		Name:         found.Name,
+		Description:  found.GetDescription(),
+		ChannelID:    found.Channel.Uuid,
+		RegionID:     found.Region.Uuid,
+		PlanTypeID:   found.PlanType.Uuid,
+		GenerationID: found.Generation.Uuid,
+		AutoUpdate:   found.AutoUpdate,
+	}, nil
+}
+
+func (c *consoleClient) getAPICluster(ctx context.Context, clusterID string) (*console.Cluster, error) {
+	found, response, err := c.api.GetCluster(ctx, clusterID).Execute()
+	return found, apiError(err, response)
 }
 
 // UpdateCluster sets the cluster's name and description; an empty description
@@ -162,7 +192,7 @@ func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string
 		},
 		ContinuousTargetOccurence: 2,
 		Refresh: func() (interface{}, string, error) {
-			cluster, err := c.GetCluster(ctx, clusterID)
+			cluster, err := c.getAPICluster(ctx, clusterID)
 			if err != nil {
 				return nil, "", err
 			}
@@ -184,50 +214,53 @@ func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string
 }
 
 // GetIPAllowlist returns the cluster's IP allowlist.
-func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([]console.ClusterIpallowlistInner, error) {
-	cluster, err := c.GetCluster(ctx, clusterID)
+func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([]allowlistEntry, error) {
+	found, err := c.getAPICluster(ctx, clusterID)
 	if err != nil {
 		return nil, err
 	}
-	if cluster.Ipallowlist != nil {
-		return cluster.Ipallowlist, nil
+
+	listed := found.Ipallowlist
+	if listed == nil {
+		// Older API responses only carry the deprecated field.
+		listed = found.Ipwhitelist
 	}
-	// Older API responses only carry the deprecated field.
-	return cluster.Ipwhitelist, nil
+
+	entries := []allowlistEntry{}
+	for _, entry := range listed {
+		entries = append(entries, allowlistEntry{IP: entry.Ip, Description: entry.Description})
+	}
+	return entries, nil
 }
 
 // SetIPAllowlist replaces the cluster's IP allowlist; an empty list removes it.
-func (c *consoleClient) SetIPAllowlist(ctx context.Context, clusterID string, entries []console.ClusterIpallowlistInner) error {
-	if entries == nil {
-		entries = []console.ClusterIpallowlistInner{}
+func (c *consoleClient) SetIPAllowlist(ctx context.Context, clusterID string, entries []allowlistEntry) error {
+	body := []console.ClusterIpallowlistInner{}
+	for _, entry := range entries {
+		body = append(body, *console.NewClusterIpallowlistInner(entry.Description, entry.IP))
 	}
 
 	response, err := c.api.UpdateIpAllowlist(ctx, clusterID).
-		IpAllowListBody(console.IpAllowListBody{Ipallowlist: entries}).
+		IpAllowListBody(console.IpAllowListBody{Ipallowlist: body}).
 		Execute()
 	return apiError(err, response)
 }
 
 // Cluster clients
 
-func (c *consoleClient) CreateClusterClient(ctx context.Context, clusterID, name string, scopes []string) (*console.CreatedClusterClient, error) {
+// CreateClusterClient creates a client and returns its ID and secret. The
+// secret is only ever returned here.
+func (c *consoleClient) CreateClusterClient(ctx context.Context, clusterID, name string, scopes []string) (*createdClusterClient, error) {
 	created, response, err := c.api.CreateClient(ctx, clusterID).
 		CreateClusterClientBody(console.CreateClusterClientBody{
 			ClientName:  name,
 			Permissions: scopes,
 		}).
 		Execute()
-	return created, apiError(err, response)
-}
-
-// clusterClient is a cluster client as it exists in the Console. The client
-// secret is only returned once, by CreateClusterClient.
-type clusterClient struct {
-	ClientID               string
-	Name                   string
-	Scopes                 []string
-	ZeebeAddress           string
-	AuthorizationServerURL string
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return &createdClusterClient{ClientID: created.ClientId, Secret: created.ClientSecret}, nil
 }
 
 // GetClusterClient returns the client with its connection details and scopes,
@@ -294,6 +327,21 @@ func (c *consoleClient) DeleteSecret(ctx context.Context, clusterID, name string
 
 // Organization members
 
+// errOwnerUnchangeable is returned (wrapped) when asked to change or remove
+// the organization owner, which the API doesn't allow.
+var errOwnerUnchangeable = errors.New("the organization owner's roles can't be changed and the owner can't be removed through the API")
+
+// assignableMemberRoles are the organization roles the API can assign. Other
+// roles a member may hold, such as owner, are never returned or sent.
+var assignableMemberRoles = []string{
+	string(console.ORGANIZATIONROLEADMIN_ADMIN),
+	string(console.ORGANIZATIONROLEOPERATIONSENGINEER_OPERATIONSENGINEER),
+	string(console.ORGANIZATIONROLETASKUSER_TASKUSER),
+	string(console.ORGANIZATIONROLEANALYST_ANALYST),
+	string(console.ORGANIZATIONROLEDEVELOPER_DEVELOPER),
+	string(console.ORGANIZATIONROLEVISITOR_VISITOR),
+}
+
 // memberCacheTTL bounds how long a fetched member list is reused. It only has
 // to span one Terraform operation; changes made outside of it show up on the
 // next one.
@@ -317,11 +365,12 @@ func (m *memberCache) time() time.Time {
 	return time.Now()
 }
 
-// GetMember returns the member with the given email, or errNotFound.
+// GetMember returns the member with the given email, or errNotFound. Roles
+// holds only assignable roles; Owner reports the owner role.
 //
 // The Console API only offers the full member list, which is cached for
 // memberCacheTTL. Concurrent callers wait for a single fetch.
-func (c *consoleClient) GetMember(ctx context.Context, email string) (*console.Member, error) {
+func (c *consoleClient) GetMember(ctx context.Context, email string) (*member, error) {
 	c.members.mu.Lock()
 	defer c.members.mu.Unlock()
 
@@ -337,16 +386,37 @@ func (c *consoleClient) GetMember(ctx context.Context, email string) (*console.M
 		c.members.fetchedAt = c.members.time()
 	}
 
-	for _, member := range c.members.members {
-		if member.Email == email {
-			return &member, nil
+	for _, listed := range c.members.members {
+		if listed.Email != email {
+			continue
 		}
+		found := &member{Email: listed.Email, Roles: []string{}}
+		for _, role := range listed.Roles {
+			if role == console.ORGANIZATIONROLE_OWNER {
+				found.Owner = true
+			}
+			if slices.Contains(assignableMemberRoles, string(role)) {
+				found.Roles = append(found.Roles, string(role))
+			}
+		}
+		return found, nil
 	}
 	return nil, fmt.Errorf("%w: organization member %q", errNotFound, email)
 }
 
-// SetMemberRoles invites the member if needed and replaces their roles.
+// SetMemberRoles invites the member if needed and replaces their roles, or
+// returns errOwnerUnchangeable for the owner.
 func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles []string) error {
+	existing, err := c.GetMember(ctx, email)
+	switch {
+	case errors.Is(err, errNotFound):
+		// Not a member yet; UpdateMembers invites them.
+	case err != nil:
+		return err
+	case existing.Owner:
+		return fmt.Errorf("%w: %s", errOwnerUnchangeable, email)
+	}
+
 	orgRoles := make([]console.AssignableOrganizationRoleType, 0, len(roles))
 	for _, name := range roles {
 		role, err := console.NewAssignableOrganizationRoleTypeFromValue(name)
@@ -367,7 +437,17 @@ func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles 
 	return nil
 }
 
+// DeleteMember removes the member, or returns errOwnerUnchangeable for the
+// owner and errNotFound when they aren't a member.
 func (c *consoleClient) DeleteMember(ctx context.Context, email string) error {
+	existing, err := c.GetMember(ctx, email)
+	if err != nil {
+		return err
+	}
+	if existing.Owner {
+		return fmt.Errorf("%w: %s", errOwnerUnchangeable, email)
+	}
+
 	response, err := c.api.DeleteMember(ctx, email).Execute()
 	err = apiError(err, response)
 	// A member that is already gone must not linger in the cache either.
@@ -414,7 +494,29 @@ func (m *memberCache) remove(email string) {
 
 // GetParameters returns the channels, plan types and regions available to the
 // organization.
-func (c *consoleClient) GetParameters(ctx context.Context) (*console.Parameters, error) {
+func (c *consoleClient) GetParameters(ctx context.Context) (*parameters, error) {
 	params, response, err := c.api.GetParameters(ctx).Execute()
-	return params, apiError(err, response)
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	result := &parameters{}
+	for _, ch := range params.Channels {
+		listed := channel{
+			ID:                ch.Uuid,
+			Name:              ch.Name,
+			DefaultGeneration: namedID{ID: ch.DefaultGeneration.Uuid, Name: ch.DefaultGeneration.Name},
+		}
+		for _, generation := range ch.AllowedGenerations {
+			listed.AllowedGenerations = append(listed.AllowedGenerations, namedID{ID: generation.Uuid, Name: generation.Name})
+		}
+		result.Channels = append(result.Channels, listed)
+	}
+	for _, region := range params.Regions {
+		result.Regions = append(result.Regions, namedID{ID: region.Uuid, Name: region.Name})
+	}
+	for _, planType := range params.ClusterPlanTypes {
+		result.PlanTypes = append(result.PlanTypes, namedID{ID: planType.Uuid, Name: planType.Name})
+	}
+	return result, nil
 }

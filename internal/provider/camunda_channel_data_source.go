@@ -131,19 +131,19 @@ func (d *CamundaChannelDataSource) Read(ctx context.Context, req datasource.Read
 	for _, channel := range params.Channels {
 		if channel.Name == data.Name.ValueString() {
 
-			data.Id = types.StringValue(channel.Uuid)
+			data.Id = types.StringValue(channel.ID)
 			data.Name = types.StringValue(channel.Name)
-			data.DefaultGenerationId = types.StringValue(channel.DefaultGeneration.Uuid)
+			data.DefaultGenerationId = types.StringValue(channel.DefaultGeneration.ID)
 			data.DefaultGenerationName = types.StringValue(channel.DefaultGeneration.Name)
 
 			var allowedGenerations []Generation
 			allowedGenerationIds := map[string]string{}
 			for _, generation := range channel.AllowedGenerations {
 				allowedGenerations = append(allowedGenerations, Generation{
-					Id:   generation.Uuid,
+					Id:   generation.ID,
 					Name: generation.Name,
 				})
-				allowedGenerationIds[generation.Name] = generation.Uuid
+				allowedGenerationIds[generation.Name] = generation.ID
 			}
 
 			allowedGenerationsTF, diags := types.ListValueFrom(ctx, types.ObjectType{

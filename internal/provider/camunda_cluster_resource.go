@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 
-	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -116,14 +115,14 @@ func clusterSchema() schema.Schema {
 }
 
 func createCluster(op *op, plan camundaClusterData) (camundaClusterData, error) {
-	clusterID, err := op.client.CreateCluster(op.ctx, console.CreateClusterRequest{
+	clusterID, err := op.client.CreateCluster(op.ctx, cluster{
 		Name:         plan.Name.ValueString(),
-		PlanTypeId:   plan.PlanType.ValueString(),
-		ChannelId:    plan.Channel.ValueString(),
-		GenerationId: plan.Generation.ValueString(),
-		RegionId:     plan.Region.ValueString(),
-		AutoUpdate:   plan.AutoUpdate.ValueBoolPointer(),
-		Description:  plan.Description.ValueStringPointer(),
+		Description:  plan.Description.ValueString(),
+		ChannelID:    plan.Channel.ValueString(),
+		RegionID:     plan.Region.ValueString(),
+		PlanTypeID:   plan.PlanType.ValueString(),
+		GenerationID: plan.Generation.ValueString(),
+		AutoUpdate:   plan.AutoUpdate.ValueBool(),
 	})
 	if err != nil {
 		return plan, err
@@ -165,23 +164,23 @@ func generationChangeReplaces(ctx context.Context, req planmodifier.StringReques
 }
 
 // setFromAPI copies what the Console reports about the cluster into the model.
-func (d *camundaClusterData) setFromAPI(cluster *console.Cluster) {
-	d.Name = types.StringValue(cluster.Name)
-	d.Channel = types.StringValue(cluster.Channel.Uuid)
-	d.Region = types.StringValue(cluster.Region.Uuid)
-	d.PlanType = types.StringValue(cluster.PlanType.Uuid)
-	d.AutoUpdate = types.BoolValue(cluster.AutoUpdate)
-	if cluster.Description == nil || *cluster.Description == "" {
+func (d *camundaClusterData) setFromAPI(cl *cluster) {
+	d.Name = types.StringValue(cl.Name)
+	d.Channel = types.StringValue(cl.ChannelID)
+	d.Region = types.StringValue(cl.RegionID)
+	d.PlanType = types.StringValue(cl.PlanTypeID)
+	d.AutoUpdate = types.BoolValue(cl.AutoUpdate)
+	if cl.Description == "" {
 		d.Description = types.StringNull()
 	} else {
-		d.Description = types.StringPointerValue(cluster.Description)
+		d.Description = types.StringValue(cl.Description)
 	}
-	d.CurrentGeneration = types.StringValue(cluster.Generation.Uuid)
+	d.CurrentGeneration = types.StringValue(cl.GenerationID)
 
 	// With auto_update the server moves the cluster to newer generations, so
 	// the configured generation is only where it started; keep it instead of
 	// reporting a diff the user can't apply.
-	if d.Generation.IsNull() || !cluster.AutoUpdate {
+	if d.Generation.IsNull() || !cl.AutoUpdate {
 		d.Generation = d.CurrentGeneration
 	}
 }
