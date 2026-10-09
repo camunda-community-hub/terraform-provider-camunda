@@ -83,11 +83,13 @@ func newConsoleClient(ctx context.Context, cfg consoleClientConfig) (*consoleCli
 	apiCfg.Scheme = apiURL.Scheme
 	apiCfg.Host = apiURL.Host
 	apiCfg.Debug = cfg.Debug
+	// The retries sit outside the oauth2 transport, so every attempt gets a
+	// current token even if the waits outlast the previous one.
 	apiCfg.HTTPClient = &http.Client{
-		Transport: &oauth2.Transport{
+		Transport: newRateLimitTransport(&oauth2.Transport{
 			Source: tokenSource,
-			Base:   newRateLimitTransport(http.DefaultTransport),
-		},
+			Base:   http.DefaultTransport,
+		}),
 	}
 
 	return &consoleClient{
@@ -137,7 +139,7 @@ func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*cons
 // UpdateCluster sets the cluster's name and description; an empty description
 // clears it.
 func (c *consoleClient) UpdateCluster(ctx context.Context, clusterID, name, description string) error {
-	response, err := c.api.UpdateCluster(ctx, clusterID).
+	response, err := c.api.UpdateCluster(withReplayableWrite(ctx), clusterID).
 		UpdateClusterBody(console.UpdateClusterBody{Name: &name, Description: &description}).
 		Execute()
 	return apiError(err, response)
@@ -354,7 +356,7 @@ func (c *consoleClient) SetMemberRoles(ctx context.Context, email string, roles 
 		orgRoles = append(orgRoles, *role)
 	}
 
-	response, err := c.api.UpdateMembers(ctx, email).
+	response, err := c.api.UpdateMembers(withReplayableWrite(ctx), email).
 		PostMemberBody(console.PostMemberBody{OrgRoles: orgRoles}).
 		Execute()
 	if err != nil {
