@@ -394,3 +394,42 @@ func TestRateLimitTransportWaitsAtLeastMinBackoffForElapsedRetryAfter(t *testing
 		})
 	}
 }
+
+type drainTracker struct {
+	io.Reader
+	read, closed bool
+}
+
+func (d *drainTracker) Read(p []byte) (int, error) {
+	d.read = true
+	return d.Reader.Read(p)
+}
+
+func (d *drainTracker) Close() error {
+	d.closed = true
+	return nil
+}
+
+func TestRateLimitTransportDrainsAndClosesDiscardedResponses(t *testing.T) {
+	var discarded []*drainTracker
+	calls := 0
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			body := &drainTracker{Reader: strings.NewReader("local_rate_limited")}
+			discarded = append(discarded, body)
+			return &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{}, Body: body}, nil
+		}
+		return response(http.StatusOK, nil, "ok"), nil
+	})
+	tr := newRateLimitTransport(base)
+	tr.sleep = func(context.Context, time.Duration) error { return nil }
+
+	if _, err := tr.RoundTrip(newPost(t, context.Background())); err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+
+	if len(discarded) != 1 || !discarded[0].read || !discarded[0].closed {
+		t.Errorf("discarded 429 body must be drained and closed, got %+v", discarded)
+	}
+}

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"net/http"
@@ -17,6 +18,10 @@ const (
 	defaultRateLimitMinBackoff = 500 * time.Millisecond
 	defaultRateLimitMaxBackoff = 30 * time.Second
 	defaultRateLimitMaxWait    = 60 * time.Second
+
+	// maxDrainBytes is how much of a discarded 429 body is read to keep the
+	// connection reusable.
+	maxDrainBytes = 4096
 )
 
 // replayableWriteKey marks a context whose POST or PATCH request may be
@@ -108,7 +113,9 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 			"delay":   delay.String(),
 		})
 
-		// Release the connection before waiting.
+		// Drain a little of the body so the connection can be reused, then
+		// release it before waiting.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrainBytes))
 		_ = resp.Body.Close()
 
 		if err := t.sleep(req.Context(), delay); err != nil {
