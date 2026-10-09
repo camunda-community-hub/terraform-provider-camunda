@@ -17,7 +17,11 @@ var _ provider.Provider = &CamundaCloudProvider{}
 
 // CamundaCloudProvider satisfies the provider.Provider interface. Its Configure
 // hands a *consoleClient to every resource and data source.
-type CamundaCloudProvider struct{}
+type CamundaCloudProvider struct {
+	// tuneClient, when set, adjusts the Console client after it is built.
+	// Tests use it to shorten cluster health polling.
+	tuneClient func(*consoleClient)
+}
 
 // providerData can be used to store data from the Terraform configuration.
 type providerData struct {
@@ -118,6 +122,10 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 	if err != nil {
 		resp.Diagnostics.AddError("Unexpected Provider Error", err.Error())
 		return
+	}
+
+	if p.tuneClient != nil {
+		p.tuneClient(client)
 	}
 
 	resp.DataSourceData = client

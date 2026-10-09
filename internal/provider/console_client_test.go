@@ -2,87 +2,15 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 )
-
-// fakeConsole serves the OAuth token endpoint and lets each test register the
-// Console API routes it needs.
-type fakeConsole struct {
-	*httptest.Server
-	mux          *http.ServeMux
-	tokensIssued atomic.Int32
-}
-
-func newFakeConsole(t *testing.T) *fakeConsole {
-	t.Helper()
-
-	f := &fakeConsole{mux: http.NewServeMux()}
-	f.mux.HandleFunc("POST /oauth/token", func(w http.ResponseWriter, r *http.Request) {
-		_, secret, ok := r.BasicAuth()
-		if !ok {
-			secret = r.FormValue("client_secret")
-		}
-		if secret != "secret" {
-			http.Error(w, `{"error":"invalid_client"}`, http.StatusUnauthorized)
-			return
-		}
-		n := f.tokensIssued.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		// expires_in below oauth2's expiry delta forces a refresh on every use.
-		fmt.Fprintf(w, `{"access_token":"token-%d","token_type":"bearer","expires_in":1}`, n)
-	})
-	f.Server = httptest.NewServer(f.mux)
-	t.Cleanup(f.Close)
-
-	return f
-}
-
-func (f *fakeConsole) client(t *testing.T) *consoleClient {
-	t.Helper()
-
-	client, err := newConsoleClient(context.Background(), consoleClientConfig{
-		APIURL:       f.URL,
-		TokenURL:     f.URL + "/oauth/token",
-		Audience:     "api.cloud.camunda.io",
-		ClientID:     "id",
-		ClientSecret: "secret",
-	})
-	if err != nil {
-		t.Fatalf("newConsoleClient: %v", err)
-	}
-	client.clusterWaitTimeout = 5 * time.Second
-	client.clusterWaitDelay = 0
-	client.clusterPollInterval = time.Millisecond
-
-	return client
-}
-
-func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
-	t.Helper()
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		t.Errorf("encode response: %v", err)
-	}
-}
-
-func clusterWithStatus(id string, status console.ClusterComponentStatus) console.Cluster {
-	return console.Cluster{
-		Uuid:   id,
-		Name:   "test",
-		Status: console.ClusterStatus{Ready: status},
-	}
-}
 
 func TestConsoleClientRejectsInvalidCredentials(t *testing.T) {
 	f := newFakeConsole(t)
