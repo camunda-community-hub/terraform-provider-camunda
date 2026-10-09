@@ -15,6 +15,7 @@ const (
 	defaultRateLimitRetries    = 8
 	defaultRateLimitMinBackoff = 500 * time.Millisecond
 	defaultRateLimitMaxBackoff = 30 * time.Second
+	defaultRateLimitMaxWait    = 60 * time.Second
 )
 
 // replayableWriteKey marks a context whose POST or PATCH request may be
@@ -44,13 +45,18 @@ func canReplay(req *http.Request) bool {
 // 429 Too Many Requests, as long as they are safe to replay (see canReplay).
 //
 // It waits for the Retry-After header when the server sends one and otherwise
-// backs off exponentially with jitter. After maxRetries retries it returns the
-// last 429 response unchanged, so the caller reports the server's own message.
+// backs off exponentially with jitter. After maxRetries retries, or once the
+// next wait would exceed maxWait in total, it returns the last 429 response
+// unchanged, so the caller reports the server's own message.
 type rateLimitTransport struct {
 	base       http.RoundTripper
 	maxRetries int
 	minBackoff time.Duration
 	maxBackoff time.Duration
+
+	// maxWait bounds the total time spent waiting between attempts for one
+	// request, whatever the other settings add up to.
+	maxWait time.Duration
 
 	// Overridden in tests.
 	sleep func(ctx context.Context, d time.Duration) error
@@ -63,6 +69,7 @@ func newRateLimitTransport(base http.RoundTripper) *rateLimitTransport {
 		maxRetries: defaultRateLimitRetries,
 		minBackoff: defaultRateLimitMinBackoff,
 		maxBackoff: defaultRateLimitMaxBackoff,
+		maxWait:    defaultRateLimitMaxWait,
 		sleep:      sleepContext,
 		now:        time.Now,
 	}
@@ -72,6 +79,8 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if !canReplay(req) {
 		return t.base.RoundTrip(req)
 	}
+
+	var waited time.Duration
 
 	for attempt := 0; ; attempt++ {
 		resp, err := t.base.RoundTrip(req)
@@ -86,6 +95,11 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		}
 
 		delay := t.delay(resp, attempt)
+		if waited+delay > t.maxWait {
+			return resp, nil
+		}
+		waited += delay
+
 		tflog.Debug(req.Context(), "Console API rate limited the request, retrying", map[string]interface{}{
 			"method":  req.Method,
 			"path":    req.URL.Path,

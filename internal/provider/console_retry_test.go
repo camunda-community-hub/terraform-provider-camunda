@@ -85,6 +85,7 @@ func TestRateLimitTransportRetriesUntilSuccess(t *testing.T) {
 func TestRateLimitTransportBackoffGrowsWithJitterAndIsCapped(t *testing.T) {
 	tr, _, sleeps := recordingTransport([]int{429}, nil)
 	tr.maxRetries = 8
+	tr.maxWait = time.Hour
 
 	resp, err := tr.RoundTrip(newPost(t, context.Background()))
 	if err != nil {
@@ -265,5 +266,42 @@ func TestRateLimitTransportReplaysIdempotentMethods(t *testing.T) {
 				t.Errorf("status = %d, attempts = %d, want a retry that succeeds", resp.StatusCode, len(*bodies))
 			}
 		})
+	}
+}
+
+func TestRateLimitTransportStopsWhenTotalWaitWouldExceedBudget(t *testing.T) {
+	tr, bodies, sleeps := recordingTransport([]int{429}, http.Header{"Retry-After": []string{"30"}})
+	tr.maxWait = 70 * time.Second
+
+	resp, err := tr.RoundTrip(newPost(t, context.Background()))
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("status = %d, want the last 429", resp.StatusCode)
+	}
+	// Two 30s waits fit into 70s, a third would not.
+	if len(*sleeps) != 2 || len(*bodies) != 3 {
+		t.Errorf("slept %d times over %d attempts, want 2 waits and 3 attempts", len(*sleeps), len(*bodies))
+	}
+}
+
+func TestRateLimitTransportDefaultsStayWithinTheWaitBudget(t *testing.T) {
+	tr, _, sleeps := recordingTransport([]int{429}, http.Header{"Retry-After": []string{"30"}})
+
+	resp, err := tr.RoundTrip(newPost(t, context.Background()))
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var total time.Duration
+	for _, d := range *sleeps {
+		total += d
+	}
+	if total > tr.maxWait {
+		t.Errorf("waited %s in total, want at most %s", total, tr.maxWait)
 	}
 }
