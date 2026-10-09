@@ -58,7 +58,7 @@ resource "camunda_cluster" "test" {
 ### Required
 
 - `channel` (String) Channel
-- `generation` (String) Generation
+- `generation` (String) Generation the cluster is created with. With `auto_update` enabled, Camunda upgrades the cluster over time; see `current_generation` for the generation it actually runs.
 - `name` (String) The name of the cluster
 - `plan_type` (String) Plan type
 - `region` (String) Region
@@ -69,4 +69,5 @@ resource "camunda_cluster" "test" {
 
 ### Read-Only
 
+- `current_generation` (String) Generation the cluster currently runs.
 - `id` (String) Cluster ID

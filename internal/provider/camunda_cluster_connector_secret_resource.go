@@ -46,7 +46,7 @@ func (r *CamundaClusterConnectorSecretResource) Schema(ctx context.Context, req 
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Cluster Connector Secret Name",
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators: []validator.String{
 					stringvalidator.LengthBetween(1, 50),
 					stringvalidator.RegexMatches(
@@ -143,17 +143,7 @@ func (r *CamundaClusterConnectorSecretResource) Read(ctx context.Context, req re
 }
 
 func (r *CamundaClusterConnectorSecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data camundaClusterConnectorSecret
-
-	diags := req.Plan.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(unexpectedUpdate())
 }
 
 func (r *CamundaClusterConnectorSecretResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

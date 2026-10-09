@@ -56,6 +56,7 @@ func (r *CamundaClusterIPWhiteListResource) Schema(ctx context.Context, req reso
 			"cluster_id": schema.StringAttribute{
 				MarkdownDescription: "Cluster ID",
 				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -164,6 +165,8 @@ func (r *CamundaClusterIPWhiteListResource) Read(ctx context.Context, req resour
 	}
 
 	data.IPWhitelist = ipWhitelist
+	// An import only sets the id, which is the cluster ID.
+	data.ClusterID = data.Id
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -183,7 +186,7 @@ func (r *CamundaClusterIPWhiteListResource) Update(ctx context.Context, req reso
 		return
 	}
 
-	clusterId := data.Id.ValueString()
+	clusterId := data.ClusterID.ValueString()
 	ipWhitelistPath := path.Root("ip_whitelist")
 
 	err := r.client.SetIPAllowlist(ctx, clusterId, ipAllowlistFromState(data))

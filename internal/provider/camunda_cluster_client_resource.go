@@ -68,7 +68,7 @@ func (r *CamundaClusterClientResource) Schema(ctx context.Context, req resource.
 			"cluster_id": schema.StringAttribute{
 				MarkdownDescription: "Cluster ID",
 				Required:            true,
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the cluster client",
@@ -231,17 +231,7 @@ func (r *CamundaClusterClientResource) Read(ctx context.Context, req resource.Re
 }
 
 func (r *CamundaClusterClientResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data camundaClusterClientData
-
-	diags := req.Plan.Get(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(unexpectedUpdate())
 }
 
 func (r *CamundaClusterClientResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

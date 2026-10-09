@@ -103,6 +103,15 @@ func consoleClientFromProviderData(providerData any) (*consoleClient, diag.Diagn
 	return client, diags
 }
 
+// unexpectedUpdate is the Update result for resources whose attributes all
+// force replacement, so Terraform should never ask them to update in place.
+func unexpectedUpdate() diag.Diagnostic {
+	return diag.NewErrorDiagnostic(
+		"Unexpected Update",
+		"Every attribute of this resource forces replacement, so it can't be updated in place. Please report this issue to the provider developers.",
+	)
+}
+
 // apiError turns a generated-client error into one that carries the response
 // body, wrapping errNotFound on HTTP 404.
 func apiError(err error, response *http.Response) error {
