@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -156,6 +157,43 @@ func TestClusterMonitoringClientResource(t *testing.T) {
 					}
 					return nil
 				},
+			},
+		},
+	})
+}
+
+func TestClusterMonitoringResourceKeepsUnfinishedActivation(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	state.do(func(s *consoleState) { s.slowMonitoring = true })
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				// The metrics endpoint is still being set up when the wait gives up.
+				Config:      monitoringConfig(f),
+				ExpectError: regexp.MustCompile(`never became ready`),
+			},
+			{
+				// The refresh must not forget the activation, which is still
+				// provisioning: the apply would activate again and fail with
+				// "already activated". Instead the tainted resource is replaced
+				// and waits again.
+				Config:      monitoringConfig(f),
+				ExpectError: regexp.MustCompile(`never became ready`),
+			},
+			{
+				PreConfig: func() {
+					state.do(func(s *consoleState) {
+						s.slowMonitoring = false
+						for id := range s.monitoringPolls {
+							s.monitoringPolls[id] = 0
+						}
+					})
+				},
+				Config: monitoringConfig(f),
+				Check:  resource.TestCheckResourceAttr("camunda_cluster_monitoring.test", "metrics_target", "metrics.example.com"),
 			},
 		},
 	})

@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"errors"
+
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -46,10 +48,24 @@ func NewCamundaClusterMonitoringResource() resource.Resource {
 			return op.client.WaitMonitoringActive(op.ctx, created.ClusterID.ValueString())
 		},
 		read: func(op *op, prior camundaClusterMonitoringData) (camundaClusterMonitoringData, error) {
-			// An import only sets the id, which is the cluster ID.
+			// An import only sets the id, which is the cluster ID; create has
+			// set cluster_id.
+			imported := prior.ClusterID.IsNull()
 			prior.ClusterID = prior.Id
 
 			found, err := op.client.GetMonitoring(op.ctx, prior.Id.ValueString())
+			if errors.Is(err, errNotFound) && !imported && prior.MetricsTarget.IsNull() {
+				// Activation was started but never seen finishing, for example
+				// because Terraform was interrupted while waiting for the
+				// metrics endpoint. While the Console is still setting it up, it
+				// reports nothing, so don't forget the activation: the next
+				// apply would activate it again and conflict. A cluster that is
+				// gone is not worth keeping it for.
+				if _, clusterErr := op.client.GetCluster(op.ctx, prior.Id.ValueString()); clusterErr != nil {
+					return prior, clusterErr
+				}
+				return prior, nil
+			}
 			if err != nil {
 				return prior, err
 			}

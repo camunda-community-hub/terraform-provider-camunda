@@ -166,6 +166,8 @@ type consoleState struct {
 	schedules map[string]string
 	// clusterID -> polls left before external monitoring is active; absent when it is not activated
 	monitoringPolls map[string]int
+	// slowMonitoring keeps new external monitoring provisioning for good.
+	slowMonitoring bool
 	// clusterID -> monitoring clients, and their current password by uuid
 	monitoringClients   map[string][]console.ByomClientDto
 	monitoringPasswords map[string]string
@@ -739,6 +741,9 @@ func (s *consoleState) activateMonitoring(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.monitoringPolls[clusterID] = 2
+	if s.slowMonitoring {
+		s.monitoringPolls[clusterID] = 1 << 20
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
