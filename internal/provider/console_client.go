@@ -1275,7 +1275,7 @@ func (c *consoleClient) SetClusterEncryptionKeys(ctx context.Context, clusterID,
 		body.SecondaryEncryptionKeyId = &secondaryKeyID
 	}
 
-	_, response, err := c.api.UpdateClusterEncryption(withReplayableWrite(ctx), clusterID).
+	_, response, err := c.api.UpdateClusterEncryption(ctx, clusterID).
 		UpdateClusterEncryptionBody(body).
 		Execute()
 	return apiError(err, response)
