@@ -301,3 +301,46 @@ func TestClusterResourceReportsConsoleDefaults(t *testing.T) {
 		},
 	})
 }
+
+func TestClusterResourceReportsEncryptionKeys(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	const primary, secondary = "arn:aws:kms:eu-west-1:1:key/primary", "arn:aws:kms:eu-central-1:1:key/secondary"
+	config := clusterWithSettingsConfig(f, `encryption = "External"`)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption", "External"),
+					resource.TestCheckNoResourceAttr("camunda_cluster.settings", "encryption_status"),
+					resource.TestCheckNoResourceAttr("camunda_cluster.settings", "encryption_primary_key_arn"),
+					resource.TestCheckNoResourceAttr("camunda_cluster.settings", "encryption_secondary_key_arn"),
+				),
+			},
+			{
+				// Keys supplied outside this resource show up on the next refresh.
+				PreConfig: func() {
+					state.do(func(s *consoleState) {
+						for _, cluster := range s.clusters {
+							if cluster.Encryption.Type == console.CLUSTERENCRYPTIONKEY_EXTERNAL {
+								ready := console.ENCRYPTIONSTATUS_READY
+								cluster.Encryption.Status = &ready
+								cluster.Encryption.PrimaryKeyArn = &[]string{primary}[0]
+								cluster.Encryption.SecondaryKeyArn = &[]string{secondary}[0]
+							}
+						}
+					})
+				},
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption_status", "Ready"),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption_primary_key_arn", primary),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption_secondary_key_arn", secondary),
+				),
+			},
+		},
+	})
+}

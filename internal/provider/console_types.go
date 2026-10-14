@@ -34,7 +34,10 @@ type cluster struct {
 	Labels           []string
 	Status           string
 	EncryptionStatus string // empty unless the Console reports one
-	Links            clusterLinks
+	// The key ARNs are empty until keys were supplied to an "External" cluster.
+	EncryptionPrimaryKeyARN   string
+	EncryptionSecondaryKeyARN string
+	Links                     clusterLinks
 }
 
 // clusterLinks are the URLs of a cluster's components; empty when not reported.

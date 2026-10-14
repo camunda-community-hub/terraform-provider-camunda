@@ -221,6 +221,8 @@ func newCluster(found *console.Cluster) *cluster {
 	if found.Encryption != nil {
 		cl.Encryption = string(found.Encryption.Type)
 		cl.EncryptionStatus = string(found.Encryption.GetStatus())
+		cl.EncryptionPrimaryKeyARN = found.Encryption.GetPrimaryKeyArn()
+		cl.EncryptionSecondaryKeyARN = found.Encryption.GetSecondaryKeyArn()
 	}
 	return cl
 }

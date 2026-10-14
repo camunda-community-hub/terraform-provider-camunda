@@ -82,6 +82,8 @@ output "zeebe_url" {
 
 - `created` (String) When the cluster was created, as an RFC 3339 timestamp.
 - `current_generation` (String) Generation the cluster currently runs.
+- `encryption_primary_key_arn` (String) ARN of the primary customer-managed key. Only reported when `encryption` is `External` and keys were supplied, see `camunda_cluster_encryption`.
+- `encryption_secondary_key_arn` (String) ARN of the secondary customer-managed key, for dual-region clusters. Only reported when `encryption` is `External` and keys were supplied.
 - `encryption_status` (String) State of the cluster's encryption. Only reported when `encryption` is `External`.
 - `id` (String) Cluster ID
 - `labels` (List of String) Labels of the cluster, as reported by the Console.

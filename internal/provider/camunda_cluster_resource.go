@@ -36,12 +36,14 @@ type camundaClusterData struct {
 	StageLabel       types.String `tfsdk:"stage_label"`
 	HardwarePackages types.Int64  `tfsdk:"hardware_packages"`
 
-	OwnerID          types.String `tfsdk:"owner_id"`
-	Created          types.String `tfsdk:"created"`
-	Labels           types.List   `tfsdk:"labels"`
-	Status           types.String `tfsdk:"status"`
-	EncryptionStatus types.String `tfsdk:"encryption_status"`
-	Links            types.Object `tfsdk:"links"`
+	OwnerID                   types.String `tfsdk:"owner_id"`
+	Created                   types.String `tfsdk:"created"`
+	Labels                    types.List   `tfsdk:"labels"`
+	Status                    types.String `tfsdk:"status"`
+	EncryptionStatus          types.String `tfsdk:"encryption_status"`
+	EncryptionPrimaryKeyARN   types.String `tfsdk:"encryption_primary_key_arn"`
+	EncryptionSecondaryKeyARN types.String `tfsdk:"encryption_secondary_key_arn"`
+	Links                     types.Object `tfsdk:"links"`
 }
 
 // clusterLinksModel is the value of the links attribute.
@@ -175,6 +177,14 @@ func clusterSchema() schema.Schema {
 				MarkdownDescription: "State of the cluster's encryption. Only reported when `encryption` is `External`.",
 				Computed:            true,
 			},
+			"encryption_primary_key_arn": schema.StringAttribute{
+				MarkdownDescription: "ARN of the primary customer-managed key. Only reported when `encryption` is `External` and keys were supplied, see `camunda_cluster_encryption`.",
+				Computed:            true,
+			},
+			"encryption_secondary_key_arn": schema.StringAttribute{
+				MarkdownDescription: "ARN of the secondary customer-managed key, for dual-region clusters. Only reported when `encryption` is `External` and keys were supplied.",
+				Computed:            true,
+			},
 			"owner_id": schema.StringAttribute{
 				MarkdownDescription: "ID of the user or client that owns the cluster.",
 				Computed:            true,
@@ -239,6 +249,7 @@ func createCluster(op *op, plan camundaClusterData) (camundaClusterData, error) 
 	// be unknown; the read after the wait fills these in.
 	for _, attr := range []*types.String{
 		&plan.BackupRegion, &plan.Encryption, &plan.EncryptionStatus,
+		&plan.EncryptionPrimaryKeyARN, &plan.EncryptionSecondaryKeyARN,
 		&plan.OwnerID, &plan.Created, &plan.Status,
 	} {
 		*attr = types.StringNull()
@@ -305,6 +316,8 @@ func (d *camundaClusterData) setFromAPI(cl *cluster) {
 	d.BackupRegion = nullIfEmpty(cl.BackupRegionID)
 	d.Encryption = nullIfEmpty(cl.Encryption)
 	d.EncryptionStatus = nullIfEmpty(cl.EncryptionStatus)
+	d.EncryptionPrimaryKeyARN = nullIfEmpty(cl.EncryptionPrimaryKeyARN)
+	d.EncryptionSecondaryKeyARN = nullIfEmpty(cl.EncryptionSecondaryKeyARN)
 	d.OwnerID = types.StringValue(cl.OwnerID)
 	d.Created = types.StringValue(cl.Created.Format(time.RFC3339))
 	d.Labels = stringList(cl.Labels)
