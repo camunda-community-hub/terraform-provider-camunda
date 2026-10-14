@@ -1126,6 +1126,12 @@ func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) (cl
 	// not inactive monitoring.
 	fallback := found.Status.MapmapOfStringAny
 	unreadable = status == nil && fallback != nil && len(*fallback) > 0
+
+	// A null client list is as malformed here as under an empty status; an
+	// explicit empty list decodes to a non-nil slice.
+	if found.Clients == nil {
+		return nil, nil, false, fmt.Errorf("unable to read monitoring clients: the response has no client list")
+	}
 	return newMonitoringClients(found.Clients), status, unreadable, nil
 }
 
