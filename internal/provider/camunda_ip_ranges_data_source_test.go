@@ -18,6 +18,7 @@ func TestIPRangesDataSource(t *testing.T) {
 data "camunda_ip_ranges" "test" {}
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data.camunda_ip_ranges.test", "id", "ip-ranges"),
 					resource.TestCheckResourceAttr("data.camunda_ip_ranges.test", "web_modeler.#", "2"),
 					resource.TestCheckResourceAttr("data.camunda_ip_ranges.test", "web_modeler.0", "10.0.0.0/24"),
 					resource.TestCheckResourceAttr("data.camunda_ip_ranges.test", "web_modeler.1", "10.0.1.0/24"),
