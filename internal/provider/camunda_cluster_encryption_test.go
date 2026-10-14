@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -10,26 +11,43 @@ import (
 )
 
 const (
-	fakeKeyOne = "arn:aws:kms:eu-west-1:123456789012:key/one"
-	fakeKeyTwo = "arn:aws:kms:eu-west-1:123456789012:key/two"
+	// Keys in the primary region of the AWS cluster, and one in its backup region.
+	fakeKeyOne       = "arn:aws:kms:eu-central-1:123456789012:key/one"
+	fakeKeyTwo       = "arn:aws:kms:eu-central-1:123456789012:key/two"
+	fakeKeyBackupOne = "arn:aws:kms:eu-west-1:123456789012:key/backup-one"
 )
 
-func byokClusterConfig(f *fakeConsole, encryption string) string {
+// byokClusterConfig is a cluster in an AWS region, with a backup region in
+// another one if dualRegion.
+func byokClusterConfig(f *fakeConsole, encryption string, dualRegion bool) string {
+	backupRegion := ""
+	if dualRegion {
+		backupRegion = "backup_region = data.camunda_region.ireland.id"
+	}
 	return clusterConfig(f, "cluster", fakeTrialPlan, false) + fmt.Sprintf(`
+data "camunda_region" "frankfurt" {
+  name = %q
+}
+
+data "camunda_region" "ireland" {
+  name = %q
+}
+
 resource "camunda_cluster" "byok" {
   name        = "byok"
   channel     = data.camunda_channel.stable.id
-  region      = data.camunda_region.belgium.id
+  region      = data.camunda_region.frankfurt.id
   plan_type   = data.camunda_cluster_plan_type.plan.id
   generation  = data.camunda_channel.stable.default_generation_id
   encryption  = %q
   auto_update = false
+  %s
 }
-`, encryption)
+`, fakeAWSRegionName, fakeAWSBackupName, encryption, backupRegion)
 }
 
 func encryptionConfig(f *fakeConsole, encryption, primaryKey string) string {
-	return byokClusterConfig(f, encryption) + fmt.Sprintf(`
+	return byokClusterConfig(f, encryption, false) + fmt.Sprintf(`
 resource "camunda_cluster_encryption" "test" {
   cluster_id     = camunda_cluster.byok.id
   primary_key_id = %q
@@ -69,7 +87,7 @@ func TestClusterEncryptionResource(t *testing.T) {
 			},
 			{
 				// Destroying leaves the keys on the cluster; the resource is just gone from state.
-				Config: byokClusterConfig(f, "External"),
+				Config: byokClusterConfig(f, "External", false),
 				Check: func(*terraform.State) error {
 					var stillConfigured bool
 					state.do(func(s *consoleState) {
@@ -105,20 +123,20 @@ func TestClusterEncryptionResourceRejectsClusterWithoutExternalEncryption(t *tes
 func TestClusterEncryptionResourceDetectsRemovedSecondaryKey(t *testing.T) {
 	f := newFakeConsole(t)
 	state := f.serveConsole(t)
-	config := byokClusterConfig(f, "External") + fmt.Sprintf(`
+	config := byokClusterConfig(f, "External", true) + fmt.Sprintf(`
 resource "camunda_cluster_encryption" "test" {
   cluster_id       = camunda_cluster.byok.id
   primary_key_id   = %q
   secondary_key_id = %q
 }
-`, fakeKeyOne, fakeKeyTwo)
+`, fakeKeyOne, fakeKeyBackupOne)
 
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: f.providerFactories(),
 		Steps: []resource.TestStep{
 			{
 				Config: config,
-				Check:  resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "secondary_key_id", fakeKeyTwo),
+				Check:  resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "secondary_key_id", fakeKeyBackupOne),
 			},
 			{
 				// The Console stops reporting the secondary key: Terraform plans to set it again.
@@ -154,7 +172,7 @@ func TestClusterEncryptionResourceRejectsEmptyKeyIDs(t *testing.T) {
 				Steps: []resource.TestStep{
 					{
 						// An empty key is sent as no key and read back as null.
-						Config: byokClusterConfig(f, "External") + `
+						Config: byokClusterConfig(f, "External", false) + `
 resource "camunda_cluster_encryption" "test" {
   cluster_id = camunda_cluster.byok.id
   ` + keys + `
@@ -166,4 +184,92 @@ resource "camunda_cluster_encryption" "test" {
 			})
 		})
 	}
+}
+
+func TestClusterEncryptionResourceEnforcesRegionsAndSecondaryKey(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+	encryption := func(cluster, keys string) string {
+		return cluster + `
+resource "camunda_cluster_encryption" "test" {
+  cluster_id = camunda_cluster.byok.id
+  ` + keys + `
+}
+`
+	}
+
+	tests := map[string]struct {
+		config string
+		want   string
+	}{
+		"key in another region": {
+			config: encryption(byokClusterConfig(f, "External", false), fmt.Sprintf(`primary_key_id = %q`, fakeKeyBackupOne)),
+			want:   `not in the cluster's region`,
+		},
+		"dual-region without a secondary key": {
+			config: encryption(byokClusterConfig(f, "External", true), fmt.Sprintf(`primary_key_id = %q`, fakeKeyOne)),
+			want:   `needs a distinct secondary key`,
+		},
+		"dual-region with a secondary key in the primary region": {
+			config: encryption(byokClusterConfig(f, "External", true), fmt.Sprintf("primary_key_id = %q\n  secondary_key_id = %q", fakeKeyOne, fakeKeyTwo)),
+			want:   `needs a distinct secondary key`,
+		},
+		"single-region with a secondary key": {
+			config: encryption(byokClusterConfig(f, "External", false), fmt.Sprintf("primary_key_id = %q\n  secondary_key_id = %q", fakeKeyOne, fakeKeyBackupOne)),
+			want:   `takes no secondary key`,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: f.providerFactories(),
+				Steps:                    []resource.TestStep{{Config: tc.config, ExpectError: regexp.MustCompile(strings.ReplaceAll(tc.want, " ", `\s+`))}},
+			})
+		})
+	}
+}
+
+func TestClusterEncryptionResourceNeedsAnAWSRegion(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: clusterWithSettingsConfig(f, `encryption = "External"`) + fmt.Sprintf(`
+resource "camunda_cluster_encryption" "test" {
+  cluster_id     = camunda_cluster.settings.id
+  primary_key_id = %q
+}
+`, fakeKeyOne),
+				ExpectError: regexp.MustCompile(`only\s+available\s+on\s+AWS`),
+			},
+		},
+	})
+}
+
+func TestClusterEncryptionResourceSupportsDualRegionClusters(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: byokClusterConfig(f, "External", true) + fmt.Sprintf(`
+resource "camunda_cluster_encryption" "test" {
+  cluster_id       = camunda_cluster.byok.id
+  primary_key_id   = %q
+  secondary_key_id = %q
+}
+`, fakeKeyOne, fakeKeyBackupOne),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "primary_key_arn", fakeKeyOne),
+					resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "secondary_key_arn", fakeKeyBackupOne),
+					resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "status", "Ready"),
+				),
+			},
+		},
+	})
 }

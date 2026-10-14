@@ -115,17 +115,22 @@ func clusterWithStatus(id string, status console.ClusterComponentStatus) console
 
 // Parameters offered by the in-memory Console.
 const (
-	fakeChannelID    = "channel-stable"
-	fakeGeneration1  = "gen-1"
-	fakeGeneration2  = "gen-2"
-	fakeTrialPlanID  = "plan-trial"
-	fakeProdPlanID   = "plan-production"
-	fakeRegionID     = "region-belgium"
-	fakeChannelName  = "Stable"
-	fakeTrialPlan    = "Trial Package"
-	fakeProdPlan     = "Production"
-	fakeRegionName   = "Belgium, Europe (europe-west1)"
-	fakeZeebeAddress = "zeebe.example.com:443"
+	fakeChannelID   = "channel-stable"
+	fakeGeneration1 = "gen-1"
+	fakeGeneration2 = "gen-2"
+	fakeTrialPlanID = "plan-trial"
+	fakeProdPlanID  = "plan-production"
+	fakeRegionID    = "region-belgium"
+	fakeChannelName = "Stable"
+	fakeTrialPlan   = "Trial Package"
+	fakeProdPlan    = "Production"
+	fakeRegionName  = "Belgium, Europe (europe-west1)"
+	// AWS regions, which customer-managed encryption needs.
+	fakeAWSRegionID     = "region-frankfurt"
+	fakeAWSRegionName   = "Frankfurt, Europe (eu-central-1)"
+	fakeAWSBackupRegion = "region-ireland"
+	fakeAWSBackupName   = "Ireland, Europe (eu-west-1)"
+	fakeZeebeAddress    = "zeebe.example.com:443"
 )
 
 // clusterSettings are the cluster attributes the Console accepts but never
@@ -300,6 +305,8 @@ func (s *consoleState) getParameters(w http.ResponseWriter, r *http.Request) {
 		},
 		Regions: []console.ParametersRegionsInner{
 			{Uuid: fakeRegionID, Name: fakeRegionName, Provider: "gcp"},
+			{Uuid: fakeAWSRegionID, Name: fakeAWSRegionName, Provider: "aws"},
+			{Uuid: fakeAWSBackupRegion, Name: fakeAWSBackupName, Provider: "aws"},
 		},
 	})
 }
@@ -868,8 +875,27 @@ func (s *consoleState) updateClusterEncryption(w http.ResponseWriter, r *http.Re
 	if !s.decode(w, r, &req) {
 		return
 	}
-	if !strings.HasPrefix(req.PrimaryEncryptionKeyId, "arn:aws:kms:") {
-		http.Error(w, `{"message":"invalid ARN"}`, http.StatusBadRequest)
+	// The key must live in the cluster's AWS region and, for a dual-region
+	// cluster only, a second one in its backup region.
+	awsRegions := map[string]string{fakeAWSRegionID: "eu-central-1", fakeAWSBackupRegion: "eu-west-1"}
+	primaryRegion, aws := awsRegions[cluster.Region.Uuid]
+	if !aws {
+		http.Error(w, `{"message":"external encryption is only available on AWS"}`, http.StatusForbidden)
+		return
+	}
+	if keyRegion(req.PrimaryEncryptionKeyId) != primaryRegion {
+		http.Error(w, `{"message":"primary key ARN is invalid or not in the cluster's region"}`, http.StatusBadRequest)
+		return
+	}
+	switch {
+	case cluster.BackupRegion != nil:
+		if req.SecondaryEncryptionKeyId == nil || *req.SecondaryEncryptionKeyId == req.PrimaryEncryptionKeyId ||
+			keyRegion(*req.SecondaryEncryptionKeyId) != awsRegions[cluster.BackupRegion.Uuid] {
+			http.Error(w, `{"message":"a dual-region cluster needs a distinct secondary key in its backup region"}`, http.StatusBadRequest)
+			return
+		}
+	case req.SecondaryEncryptionKeyId != nil:
+		http.Error(w, `{"message":"a single-region cluster takes no secondary key"}`, http.StatusBadRequest)
 		return
 	}
 	cluster.Encryption.PrimaryKeyArn = &req.PrimaryEncryptionKeyId
@@ -925,4 +951,13 @@ func (s *consoleState) deleteMember(w http.ResponseWriter, r *http.Request) {
 // like the real API, refuses to change or remove.
 func (s *consoleState) isOwner(email string) bool {
 	return slices.Contains(s.members[email].Roles, console.ORGANIZATIONROLE_OWNER)
+}
+
+// keyRegion is the region segment of an AWS KMS key ARN, or "" if it isn't one.
+func keyRegion(arn string) string {
+	parts := strings.Split(arn, ":")
+	if len(parts) < 6 || parts[0] != "arn" || parts[2] != "kms" {
+		return ""
+	}
+	return parts[3]
 }
