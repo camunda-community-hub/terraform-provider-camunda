@@ -40,7 +40,7 @@ Read-Only:
 - `cluster_id` (String) Cluster ID
 - `id` (String) Cluster Client ID, in the form `<cluster_id>/<zeebe_client_id>`
 - `name` (String) The name of the client
-- `scopes` (List of String) The scopes the client has
+- `scopes` (Set of String) The scopes the client has
 - `zeebe_address` (String) Zeebe Address
 - `zeebe_authorization_server_url` (String) Zeebe Authorization Server URL
 - `zeebe_client_id` (String) Zeebe Client Id
