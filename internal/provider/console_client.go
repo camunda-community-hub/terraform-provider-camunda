@@ -1382,7 +1382,7 @@ func (c *consoleClient) TriggerFailover(ctx context.Context, clusterID string, b
 		Execute()
 	if err == nil {
 		results, _ := json.Marshal(result.Results)
-		return &failover{NewClusterID: result.NewClusterId, Results: string(results)}, nil
+		return newFailover(result.NewClusterId, results), nil
 	}
 
 	// The generated client can't decode every shape the Console reports for
@@ -1394,8 +1394,35 @@ func (c *consoleClient) TriggerFailover(ctx context.Context, clusterID string, b
 			Results      json.RawMessage `json:"results"`
 		}
 		if json.Unmarshal(openAPIErr.Body(), &body) == nil && body.NewClusterID != "" {
-			return &failover{NewClusterID: body.NewClusterID, Results: string(body.Results)}, nil
+			return newFailover(body.NewClusterID, body.Results), nil
 		}
 	}
 	return nil, apiError(err, response)
+}
+
+// newFailover builds the failover result and finds the stages the Console
+// reports as failed: each of them is either "ok" or an object with an error.
+func newFailover(newClusterID string, results []byte) *failover {
+	result := &failover{NewClusterID: newClusterID, Results: string(results)}
+
+	var stages map[string]json.RawMessage
+	if json.Unmarshal(results, &stages) != nil {
+		return result
+	}
+	for _, stage := range []string{"backupClone", "restore"} {
+		var reported struct {
+			Error json.RawMessage `json:"error"`
+		}
+		if json.Unmarshal(stages[stage], &reported) != nil || len(reported.Error) == 0 || string(reported.Error) == "null" {
+			continue
+		}
+
+		message := string(reported.Error)
+		var text string
+		if json.Unmarshal(reported.Error, &text) == nil {
+			message = text
+		}
+		result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", stage, message))
+	}
+	return result
 }

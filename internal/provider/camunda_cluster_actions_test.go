@@ -163,3 +163,29 @@ func TestConsoleClientTriggerFailoverToleratesUnknownResultShapes(t *testing.T) 
 		t.Fatalf("TriggerFailover = %+v, %v; want the new cluster despite the unknown result shape", result, err)
 	}
 }
+
+func TestClusterFailoverActionReportsFailedStages(t *testing.T) {
+	for name, results := range map[string]string{
+		"known shape":   `{"backupClone":"ok","restore":{"error":"restore exploded"}}`,
+		"unknown shape": `{"backupClone":{"error":"clone exploded","details":["x"]},"restore":"ok"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeConsole(t)
+			f.mux.HandleFunc("POST /clusters/{id}/failover", func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.WriteString(w, `{"newClusterId":"new","results":`+results+`}`)
+			})
+
+			progress, errs := invokeAction(t, NewCamundaClusterFailoverAction(), f.client(t), map[string]tftypes.Value{
+				"cluster_id":        stringValue("c1"),
+				"backup_ids":        tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, []tftypes.Value{stringValue("b1")}),
+				"restore_backup_id": stringValue("b1"),
+			})
+			if len(progress) != 0 {
+				t.Errorf("progress = %v, want none for a failed failover", progress)
+			}
+			if len(errs) != 1 || !strings.Contains(errs[0], "new cluster new") || !strings.Contains(errs[0], "exploded") {
+				t.Fatalf("errors = %v, want one naming the new cluster and the failed stage", errs)
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
@@ -49,6 +50,10 @@ func NewCamundaClusterFailoverAction() action.Action {
 			result, err := op.client.TriggerFailover(op.ctx, clusterID, backupIDs, config.RestoreBackupID.ValueString())
 			if err != nil {
 				return fmt.Errorf("cluster %s: %w", clusterID, err)
+			}
+			if len(result.Failures) > 0 {
+				return fmt.Errorf("cluster %s was failed over to the new cluster %s, but the failover did not fully succeed: %s",
+					clusterID, result.NewClusterID, strings.Join(result.Failures, "; "))
 			}
 			progress(fmt.Sprintf("Failed over cluster %s to the new cluster %s: %s", clusterID, result.NewClusterID, result.Results))
 			return nil

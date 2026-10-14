@@ -259,4 +259,7 @@ type failover struct {
 	// Results is the JSON the Console reports for cloning the backups and
 	// restoring one of them.
 	Results string
+	// Failures describes each stage, cloning the backups or restoring one,
+	// that the Console reports as failed. Empty when both succeeded.
+	Failures []string
 }
