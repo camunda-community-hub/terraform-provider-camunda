@@ -45,5 +45,5 @@ Read-Only:
 - `parent_entity` (String) The kind of the object's parent. Empty if not reported.
 - `parent_entity_id` (String) The ID of the object's parent. Empty if not reported.
 - `service` (String) The service the event belongs to.
-- `timestamp` (Number) When the event happened, in milliseconds since the Unix epoch.
+- `timestamp` (Number) When the event happened, in milliseconds since the Unix epoch. Null if not reported.
 - `user_id` (String) The user or client that caused the event.
