@@ -344,3 +344,19 @@ func TestClusterResourceReportsEncryptionKeys(t *testing.T) {
 		},
 	})
 }
+
+func TestClusterResourceRejectsEmptyBackupRegion(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				// An empty region would be sent as no region and read back as null.
+				Config:      clusterWithSettingsConfig(f, `backup_region = ""`),
+				ExpectError: regexp.MustCompile(`(?s)backup_region.*string length must be at least 1`),
+			},
+		},
+	})
+}

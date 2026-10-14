@@ -158,6 +158,7 @@ func clusterSchema() schema.Schema {
 				MarkdownDescription: "ID of the region that stores the cluster's backups, see the `camunda_region` data source. Only available if the sales plan supports it (Enterprise). Changing it replaces the cluster.",
 				Optional:            true,
 				Computed:            true,
+				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
