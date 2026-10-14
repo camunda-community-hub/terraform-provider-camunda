@@ -75,6 +75,18 @@ func TestClusterBackupResource(t *testing.T) {
 					return nil
 				},
 			},
+			{
+				// Removing only the backup deletes it from the Console while the
+				// cluster stays, so the cluster's teardown can't hide a delete
+				// that did nothing.
+				Config: clusterConfig(f, "cluster", fakeTrialPlan, false),
+				Check: func(*terraform.State) error {
+					if n := countBackups(state); n != 0 {
+						return fmt.Errorf("%d backups left in the Console after removing the resource", n)
+					}
+					return nil
+				},
+			},
 		},
 	})
 }
