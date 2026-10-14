@@ -550,3 +550,15 @@ func (c *consoleClient) GetParameters(ctx context.Context) (*parameters, error) 
 	}
 	return result, nil
 }
+
+// Meta
+
+// GetIPRanges returns the IP ranges Camunda's services connect from, per
+// service.
+func (c *consoleClient) GetIPRanges(ctx context.Context) (*ipRanges, error) {
+	meta, response, err := c.api.GetMeta(ctx).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return &ipRanges{WebModeler: meta.WebModeler}, nil
+}
