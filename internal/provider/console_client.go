@@ -207,6 +207,7 @@ func newCluster(found *console.Cluster) *cluster {
 		Created:      found.Created,
 		Labels:       found.Labels,
 		Status:       string(found.Status.Ready),
+		IPAllowlist:  ipAllowlistOf(found),
 		Links: clusterLinks{
 			Zeebe:      found.Links.GetZeebe(),
 			Operate:    found.Links.GetOperate(),
@@ -347,6 +348,11 @@ func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([
 		return nil, err
 	}
 
+	return ipAllowlistOf(found), nil
+}
+
+// ipAllowlistOf returns the cluster's IP allowlist, never nil.
+func ipAllowlistOf(found *console.Cluster) []allowlistEntry {
 	listed := found.Ipallowlist
 	if listed == nil {
 		// Older API responses only carry the deprecated field.
@@ -357,7 +363,7 @@ func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([
 	for _, entry := range listed {
 		entries = append(entries, allowlistEntry{IP: entry.Ip, Description: entry.Description})
 	}
-	return entries, nil
+	return entries
 }
 
 // SetIPAllowlist replaces the cluster's IP allowlist; an empty list removes it.

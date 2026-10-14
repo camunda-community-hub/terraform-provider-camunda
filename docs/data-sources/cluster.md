@@ -38,6 +38,7 @@ output "zeebe_url" {
 - `encryption` (String) Type of the key that encrypts the cluster's data: `Software`, `Hardware`, `Provider` or `External`.
 - `encryption_status` (String) State of the cluster's encryption. Only reported when `encryption` is `External`.
 - `generation` (String) ID of the generation the cluster currently runs
+- `ip_allowlist` (Attributes Set) The IP allowlist of the cluster, see `camunda_cluster_ip_whitelist`. Empty if the cluster has none, or if the organization doesn't have the feature or the client may not see it. (see [below for nested schema](#nestedatt--ip_allowlist))
 - `labels` (List of String) Labels of the cluster, as reported by the Console.
 - `links` (Attributes) URLs of the cluster's components. A component the cluster doesn't have has an empty URL. (see [below for nested schema](#nestedatt--links))
 - `name` (String) The name of the cluster
@@ -45,6 +46,15 @@ output "zeebe_url" {
 - `plan_type` (String) ID of the cluster's plan type
 - `region` (String) ID of the cluster's region
 - `status` (String) Status of the cluster, such as `Healthy` or `Suspended`.
+
+<a id="nestedatt--ip_allowlist"></a>
+### Nested Schema for `ip_allowlist`
+
+Read-Only:
+
+- `description` (String) A short description of the entry.
+- `ip` (String) The allowed IP address or network.
+
 
 <a id="nestedatt--links"></a>
 ### Nested Schema for `links`

@@ -9,22 +9,28 @@ import (
 )
 
 type clusterDataSourceData struct {
-	Id               types.String       `tfsdk:"id"`
-	Name             types.String       `tfsdk:"name"`
-	Description      types.String       `tfsdk:"description"`
-	Channel          types.String       `tfsdk:"channel"`
-	Region           types.String       `tfsdk:"region"`
-	PlanType         types.String       `tfsdk:"plan_type"`
-	Generation       types.String       `tfsdk:"generation"`
-	AutoUpdate       types.Bool         `tfsdk:"auto_update"`
-	BackupRegion     types.String       `tfsdk:"backup_region"`
-	Encryption       types.String       `tfsdk:"encryption"`
-	EncryptionStatus types.String       `tfsdk:"encryption_status"`
-	OwnerID          types.String       `tfsdk:"owner_id"`
-	Created          types.String       `tfsdk:"created"`
-	Labels           []types.String     `tfsdk:"labels"`
-	Status           types.String       `tfsdk:"status"`
-	Links            *clusterLinksModel `tfsdk:"links"`
+	Id               types.String          `tfsdk:"id"`
+	Name             types.String          `tfsdk:"name"`
+	Description      types.String          `tfsdk:"description"`
+	Channel          types.String          `tfsdk:"channel"`
+	Region           types.String          `tfsdk:"region"`
+	PlanType         types.String          `tfsdk:"plan_type"`
+	Generation       types.String          `tfsdk:"generation"`
+	AutoUpdate       types.Bool            `tfsdk:"auto_update"`
+	BackupRegion     types.String          `tfsdk:"backup_region"`
+	Encryption       types.String          `tfsdk:"encryption"`
+	EncryptionStatus types.String          `tfsdk:"encryption_status"`
+	OwnerID          types.String          `tfsdk:"owner_id"`
+	Created          types.String          `tfsdk:"created"`
+	Labels           []types.String        `tfsdk:"labels"`
+	IPAllowlist      []ipAllowlistDataItem `tfsdk:"ip_allowlist"`
+	Status           types.String          `tfsdk:"status"`
+	Links            *clusterLinksModel    `tfsdk:"links"`
+}
+
+type ipAllowlistDataItem struct {
+	IP          types.String `tfsdk:"ip"`
+	Description types.String `tfsdk:"description"`
 }
 
 type clustersDataSourceData struct {
@@ -33,6 +39,14 @@ type clustersDataSourceData struct {
 }
 
 func newClusterDataSourceData(cl cluster) clusterDataSourceData {
+	allowlist := make([]ipAllowlistDataItem, 0, len(cl.IPAllowlist))
+	for _, entry := range cl.IPAllowlist {
+		allowlist = append(allowlist, ipAllowlistDataItem{
+			IP:          types.StringValue(entry.IP),
+			Description: types.StringValue(entry.Description),
+		})
+	}
+
 	return clusterDataSourceData{
 		Id:               types.StringValue(cl.ID),
 		Name:             types.StringValue(cl.Name),
@@ -48,6 +62,7 @@ func newClusterDataSourceData(cl cluster) clusterDataSourceData {
 		OwnerID:          types.StringValue(cl.OwnerID),
 		Created:          types.StringValue(cl.Created.Format(time.RFC3339)),
 		Labels:           stringValues(cl.Labels),
+		IPAllowlist:      allowlist,
 		Status:           types.StringValue(cl.Status),
 		Links:            newClusterLinksModel(cl.Links),
 	}
@@ -146,6 +161,16 @@ func clusterDataSourceAttributes() map[string]schema.Attribute {
 			Computed:            true,
 			ElementType:         types.StringType,
 			MarkdownDescription: "Labels of the cluster, as reported by the Console.",
+		},
+		"ip_allowlist": schema.SetNestedAttribute{
+			Computed:            true,
+			MarkdownDescription: "The IP allowlist of the cluster, see `camunda_cluster_ip_whitelist`. Empty if the cluster has none, or if the organization doesn't have the feature or the client may not see it.",
+			NestedObject: schema.NestedAttributeObject{
+				Attributes: map[string]schema.Attribute{
+					"ip":          str("The allowed IP address or network."),
+					"description": str("A short description of the entry."),
+				},
+			},
 		},
 		"status": str("Status of the cluster, such as `Healthy` or `Suspended`."),
 		"links":  clusterLinksAttribute(),

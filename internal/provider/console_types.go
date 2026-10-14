@@ -32,6 +32,7 @@ type cluster struct {
 	OwnerID          string
 	Created          time.Time
 	Labels           []string
+	IPAllowlist      []allowlistEntry
 	Status           string
 	EncryptionStatus string // empty unless the Console reports one
 	// The key ARNs are empty until keys were supplied to an "External" cluster.
