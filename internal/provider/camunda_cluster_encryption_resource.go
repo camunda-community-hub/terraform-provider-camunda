@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -132,6 +133,16 @@ func (m keyIsImmutable) MarkdownDescription(ctx context.Context) string { return
 func (keyIsImmutable) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
 	// Creating, destroying, and values not known yet are fine.
 	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() || req.PlanValue.IsUnknown() {
+		return
+	}
+
+	// Moving to another cluster replaces the resource, and that cluster takes
+	// its own keys, in its own region. Only keys of the same cluster are frozen,
+	// so a cluster that is different or not known yet is fine.
+	var stateCluster, planCluster types.String
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("cluster_id"), &stateCluster)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("cluster_id"), &planCluster)...)
+	if resp.Diagnostics.HasError() || planCluster.IsUnknown() || !planCluster.Equal(stateCluster) {
 		return
 	}
 	if !req.PlanValue.Equal(req.StateValue) {

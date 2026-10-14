@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -324,6 +325,77 @@ resource "camunda_cluster_encryption" "test" {
 				// And the Console still has the first key.
 				Config: encryptionConfig(f, "External", fakeKeyOne),
 				Check:  keyRegistered(fakeKeyOne),
+			},
+		},
+	})
+}
+
+func TestClusterEncryptionResourceAllowsOtherKeysOnAnotherCluster(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	cluster := func(name string) string {
+		return fmt.Sprintf(`
+resource "camunda_cluster" %[1]q {
+  name        = %[1]q
+  channel     = data.camunda_channel.stable.id
+  region      = data.camunda_region.frankfurt.id
+  plan_type   = data.camunda_cluster_plan_type.plan.id
+  generation  = data.camunda_channel.stable.default_generation_id
+  encryption  = "External"
+  auto_update = false
+}
+`, name)
+	}
+	config := func(clusters []string, target, key string) string {
+		hcl := byokClusterConfig(f, "External", false)
+		for _, name := range clusters {
+			hcl += cluster(name)
+		}
+		return hcl + fmt.Sprintf(`
+resource "camunda_cluster_encryption" "other" {
+  cluster_id     = camunda_cluster.%s.id
+  primary_key_id = %q
+}
+`, target, key)
+	}
+	appliedKeys := func() []string {
+		var keys []string
+		state.do(func(s *consoleState) {
+			for _, c := range s.clusters {
+				if c.Encryption != nil && c.Encryption.PrimaryKeyArn != nil {
+					keys = append(keys, *c.Encryption.PrimaryKeyArn)
+				}
+			}
+		})
+		slices.Sort(keys)
+		return keys
+	}
+	expectKeys := func(want ...string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			if got := appliedKeys(); !slices.Equal(got, want) {
+				return fmt.Errorf("Console keys = %v, want %v", got, want)
+			}
+			return nil
+		}
+	}
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config([]string{"first", "second"}, "first", fakeKeyOne),
+				Check:  expectKeys(fakeKeyOne),
+			},
+			{
+				// Another cluster that exists: its id is known at plan time and
+				// differs, so the other key is fine; the resource is replaced.
+				Config: config([]string{"first", "second"}, "second", fakeKeyTwo),
+				Check:  expectKeys(fakeKeyOne, fakeKeyTwo),
+			},
+			{
+				// A cluster that doesn't exist yet: its id is unknown at plan time.
+				Config: config([]string{"first", "second", "third"}, "third", fakeKeyOne),
+				Check:  expectKeys(fakeKeyOne, fakeKeyOne, fakeKeyTwo),
 			},
 		},
 	})
