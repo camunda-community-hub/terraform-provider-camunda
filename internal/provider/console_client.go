@@ -954,6 +954,12 @@ func (c *consoleClient) GetSecureConnectivity(ctx context.Context, clusterID str
 
 	dto := found.Status.SecureConnectivityDto
 	if dto == nil {
+		// The generated client falls back to a bare map when the status is not
+		// empty but fails the typed validation; that is a response it can't
+		// read, not a cluster without secure connectivity.
+		if fallback := found.Status.MapmapOfStringAny; fallback != nil && len(*fallback) > 0 {
+			return nil, fmt.Errorf("unable to read the secure connectivity status of cluster %s: it does not match the expected shape", clusterID)
+		}
 		return nil, notActivated
 	}
 

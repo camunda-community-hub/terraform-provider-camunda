@@ -702,3 +702,17 @@ func TestConsoleClientListsBackupsSortedByID(t *testing.T) {
 		}
 	}
 }
+
+func TestConsoleClientSecureConnectivityReportsUnreadableStatus(t *testing.T) {
+	f := newFakeConsole(t)
+	// A non-empty status that fails the typed validation, here for lack of the
+	// required spec, is not "not activated".
+	f.mux.HandleFunc("GET /clusters/{id}/secure-connectivity", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"status":{"metadata":{"name":"n","namespace":"ns","labels":{"orgId":"org"}}}}`)
+	})
+
+	_, err := f.client(t).GetSecureConnectivity(context.Background(), "c1")
+	if err == nil || errors.Is(err, errNotFound) {
+		t.Fatalf("GetSecureConnectivity = %v, want an error other than errNotFound", err)
+	}
+}
