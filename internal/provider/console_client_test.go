@@ -753,3 +753,22 @@ func TestConsoleClientReadsMonitoringClientsWithoutActiveMonitoring(t *testing.T
 		t.Fatalf("GetMonitoring = %v, want errNotFound while monitoring is inactive", err)
 	}
 }
+
+func TestConsoleClientMonitoringReportsUnreadableStatus(t *testing.T) {
+	f := newFakeConsole(t)
+	// A non-empty status that fails the typed validation, here for lack of the
+	// metrics endpoint, is not inactive monitoring.
+	f.mux.HandleFunc("GET /clusters/{id}/monitoring/clients", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"clients":[],"status":{"unexpected":"shape"}}`)
+	})
+	client := f.client(t)
+
+	if _, err := client.GetMonitoring(context.Background(), "c1"); err == nil || errors.Is(err, errNotFound) {
+		t.Fatalf("GetMonitoring = %v, want an error other than errNotFound", err)
+	}
+	// The clients are still listed: only the status is unreadable.
+	if _, err := client.ListMonitoringClients(context.Background(), "c1"); err != nil {
+		t.Fatalf("ListMonitoringClients: %v", err)
+	}
+}

@@ -1064,9 +1064,12 @@ func (c *consoleClient) DeactivateMonitoring(ctx context.Context, clusterID stri
 // errNotFound when external monitoring isn't activated or the cluster does not
 // exist.
 func (c *consoleClient) GetMonitoring(ctx context.Context, clusterID string) (*monitoring, error) {
-	_, found, err := c.getMonitoring(ctx, clusterID)
+	_, found, unreadable, err := c.getMonitoring(ctx, clusterID)
 	if err != nil {
 		return nil, err
+	}
+	if unreadable {
+		return nil, fmt.Errorf("unable to read the external monitoring status of cluster %s: it does not match the expected shape", clusterID)
 	}
 	if found == nil {
 		return nil, fmt.Errorf("%w: external monitoring of cluster %s is not activated", errNotFound, clusterID)
@@ -1076,12 +1079,12 @@ func (c *consoleClient) GetMonitoring(ctx context.Context, clusterID string) (*m
 
 // getMonitoring returns the monitoring clients and the monitoring status,
 // which is nil while external monitoring isn't activated.
-func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) ([]monitoringClient, *monitoring, error) {
+func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) (clients []monitoringClient, status *monitoring, unreadable bool, err error) {
 	found, response, err := c.api.GetMonitoringClients(ctx, clusterID).Execute()
 	if err != nil {
 		body, empty := emptyStatusBody(err)
 		if !empty {
-			return nil, nil, apiError(err, response)
+			return nil, nil, false, apiError(err, response)
 		}
 
 		// The generated client gave up on the whole body, clients included.
@@ -1089,12 +1092,11 @@ func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) ([]
 			Clients []console.ByomClientDto `json:"clients"`
 		}
 		if err := json.Unmarshal(body, &listed); err != nil {
-			return nil, nil, fmt.Errorf("unable to read monitoring clients: %w", err)
+			return nil, nil, false, fmt.Errorf("unable to read monitoring clients: %w", err)
 		}
-		return newMonitoringClients(listed.Clients), nil, nil
+		return newMonitoringClients(listed.Clients), nil, false, nil
 	}
 
-	var status *monitoring
 	if byom := found.Status.ByomStatus; byom != nil {
 		status = &monitoring{
 			Target: byom.MetricsEndpoint.Target,
@@ -1104,12 +1106,18 @@ func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) ([]
 		for _, condition := range byom.Conditions {
 			encoded, err := json.Marshal(condition)
 			if err != nil {
-				return nil, nil, fmt.Errorf("unable to read monitoring condition: %w", err)
+				return nil, nil, false, fmt.Errorf("unable to read monitoring condition: %w", err)
 			}
 			status.Conditions = append(status.Conditions, string(encoded))
 		}
 	}
-	return newMonitoringClients(found.Clients), status, nil
+
+	// The generated client falls back to a bare map when the status is not
+	// empty but fails the typed validation; that is a response it can't read,
+	// not inactive monitoring.
+	fallback := found.Status.MapmapOfStringAny
+	unreadable = status == nil && fallback != nil && len(*fallback) > 0
+	return newMonitoringClients(found.Clients), status, unreadable, nil
 }
 
 // WaitMonitoringActive blocks until the Console reports where the cluster's
@@ -1139,7 +1147,7 @@ func (c *consoleClient) WaitMonitoringActive(ctx context.Context, clusterID stri
 // ListMonitoringClients returns the cluster's external monitoring clients, or
 // errNotFound when the cluster does not exist.
 func (c *consoleClient) ListMonitoringClients(ctx context.Context, clusterID string) ([]monitoringClient, error) {
-	clients, _, err := c.getMonitoring(ctx, clusterID)
+	clients, _, _, err := c.getMonitoring(ctx, clusterID)
 	return clients, err
 }
 
