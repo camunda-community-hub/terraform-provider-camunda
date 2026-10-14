@@ -1331,7 +1331,10 @@ func (c *consoleClient) WaitClusterUpgraded(ctx context.Context, clusterID, gene
 			if err != nil {
 				return "", err
 			}
-			if cluster.Generation.Uuid != generationID {
+			// A healthy cluster on the old generation is still waiting for the
+			// upgrade to show up. Any other status is reported as it is, so a
+			// cluster that stops, say as unhealthy or suspended, fails the wait.
+			if cluster.Generation.Uuid != generationID && cluster.Status.Ready == console.CLUSTERCOMPONENTSTATUS_HEALTHY {
 				return string(console.CLUSTERCOMPONENTSTATUS_UPDATING), nil
 			}
 			return string(cluster.Status.Ready), nil
