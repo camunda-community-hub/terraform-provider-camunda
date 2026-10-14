@@ -226,3 +226,15 @@ type createdMonitoringClient struct {
 	monitoringClient
 	Password string
 }
+
+// clusterEncryption is the customer-managed key configuration of a cluster
+// created with the "External" encryption type.
+type clusterEncryption struct {
+	// Type is the encryption key type of the cluster, such as "External".
+	Type string
+	// The ARNs are empty until keys were supplied.
+	PrimaryKeyARN   string
+	SecondaryKeyARN string
+	// Status is empty unless Type is "External".
+	Status string
+}

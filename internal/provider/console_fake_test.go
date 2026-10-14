@@ -164,6 +164,8 @@ type consoleState struct {
 	backupPolls map[string]int
 	// clusterID -> cron expression
 	schedules map[string]string
+	// clusterID -> polls left before BYOK encryption is ready
+	encryptionPolls map[string]int
 	// clusterID -> polls left before external monitoring is active; absent when it is not activated
 	monitoringPolls map[string]int
 	// slowMonitoring keeps new external monitoring provisioning for good.
@@ -191,6 +193,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		backups:             map[string][]console.BackupDto{},
 		backupPolls:         map[string]int{},
 		schedules:           map[string]string{},
+		encryptionPolls:     map[string]int{},
 		monitoringPolls:     map[string]int{},
 		monitoringClients:   map[string][]console.ByomClientDto{},
 		monitoringPasswords: map[string]string{},
@@ -199,6 +202,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 	}
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
+		"PUT /clusters/{id}/encryption":                            s.updateClusterEncryption,
 		"POST /clusters/{id}/monitoring":                           s.activateMonitoring,
 		"DELETE /clusters/{id}/monitoring":                         s.deactivateMonitoring,
 		"GET /clusters/{id}/monitoring/clients":                    s.listMonitoringClients,
@@ -346,6 +350,10 @@ func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
 	cluster := s.clusters[id]
 	if req.Encryption != nil {
 		cluster.Encryption.Type = *req.Encryption
+		if *req.Encryption == console.CLUSTERENCRYPTIONKEY_EXTERNAL {
+			status := console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_SUPPLIED
+			cluster.Encryption.Status = &status
+		}
 	}
 	if req.BackupRegionId != nil {
 		cluster.BackupRegion = &console.ClusterBackupRegion{Uuid: *req.BackupRegionId}
@@ -377,6 +385,14 @@ func (s *consoleState) getCluster(w http.ResponseWriter, r *http.Request) {
 		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_WAITING_FOR_INPUT
 	} else {
 		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_HEALTHY
+	}
+	if e := cluster.Encryption; e != nil && e.Status != nil && *e.Status == console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_READY {
+		if s.encryptionPolls[id] > 0 {
+			s.encryptionPolls[id]--
+		} else {
+			ready := console.ENCRYPTIONSTATUS_READY
+			e.Status = &ready
+		}
 	}
 	writeJSON(s.t, w, cluster)
 }
@@ -836,6 +852,32 @@ func (s *consoleState) writeMonitoringClient(w http.ResponseWriter, client conso
 		CreatedBy: client.CreatedBy, CreatedByName: client.CreatedByName,
 		Password: s.monitoringPasswords[client.Uuid],
 	})
+}
+
+func (s *consoleState) updateClusterEncryption(w http.ResponseWriter, r *http.Request) {
+	cluster, ok := s.cluster(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if cluster.Encryption == nil || cluster.Encryption.Type != console.CLUSTERENCRYPTIONKEY_EXTERNAL {
+		http.Error(w, `{"message":"cluster is not configured for external encryption"}`, http.StatusConflict)
+		return
+	}
+
+	var req console.UpdateClusterEncryptionBody
+	if !s.decode(w, r, &req) {
+		return
+	}
+	if !strings.HasPrefix(req.PrimaryEncryptionKeyId, "arn:aws:kms:") {
+		http.Error(w, `{"message":"invalid ARN"}`, http.StatusBadRequest)
+		return
+	}
+	cluster.Encryption.PrimaryKeyArn = &req.PrimaryEncryptionKeyId
+	cluster.Encryption.SecondaryKeyArn = req.SecondaryEncryptionKeyId
+	notReady := console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_READY
+	cluster.Encryption.Status = &notReady
+	s.encryptionPolls[cluster.Uuid] = 2
+	writeJSON(s.t, w, cluster)
 }
 
 func (s *consoleState) getMembers(w http.ResponseWriter, r *http.Request) {
