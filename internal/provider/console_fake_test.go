@@ -246,10 +246,10 @@ func (s *consoleState) getIPRanges(w http.ResponseWriter, r *http.Request) {
 
 func (s *consoleState) getAuditLog(w http.ResponseWriter, r *http.Request) {
 	timestamp := 1700000000000.0
-	parent := "cluster"
+	parent, parentID := "cluster", "c1"
 	writeJSON(s.t, w, []console.AuditDto{
 		{Service: "console", OrgId: "org", Audit: "Cluster created", AuditType: "create", Entity: "cluster", EntityId: "c1", UserId: "u1", Timestamp: &timestamp},
-		{Service: "console", OrgId: "org", Audit: "Client created", AuditType: "create", Entity: "client", EntityId: "k1", ParentEntity: &parent, ParentEntityId: &parent, UserId: "u2"},
+		{Service: "console", OrgId: "org", Audit: "Client created", AuditType: "create", Entity: "client", EntityId: "k1", ParentEntity: &parent, ParentEntityId: &parentID, UserId: "u2"},
 	})
 }
 

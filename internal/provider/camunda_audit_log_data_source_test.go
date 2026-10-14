@@ -24,6 +24,7 @@ data "camunda_audit_log" "test" {}
 					resource.TestCheckNoResourceAttr("data.camunda_audit_log.test", "events.1.timestamp"),
 					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.0.parent_entity", ""),
 					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.1.parent_entity", "cluster"),
+					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.1.parent_entity_id", "c1"),
 				),
 			},
 		},
