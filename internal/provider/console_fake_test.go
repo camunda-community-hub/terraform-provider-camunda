@@ -169,6 +169,11 @@ type consoleState struct {
 	backupPolls map[string]int
 	// clusterID -> cron expression
 	schedules map[string]string
+	// backupID -> restore state; absent when never restored
+	restores     map[string]console.RestoreState
+	failRestores bool
+	// clusterID -> failover request received
+	failovers map[string]console.TriggerFailoverBody
 	// clusterID -> polls left before BYOK encryption is ready
 	encryptionPolls map[string]int
 	// slowEncryption keeps newly supplied keys from ever becoming ready.
@@ -200,6 +205,8 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		backups:             map[string][]console.BackupDto{},
 		backupPolls:         map[string]int{},
 		schedules:           map[string]string{},
+		restores:            map[string]console.RestoreState{},
+		failovers:           map[string]console.TriggerFailoverBody{},
 		encryptionPolls:     map[string]int{},
 		monitoringPolls:     map[string]int{},
 		monitoringClients:   map[string][]console.ByomClientDto{},
@@ -209,6 +216,11 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 	}
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
+		"PUT /clusters/{id}/upgrade":                               s.upgradeCluster,
+		"PUT /clusters/{id}/wake":                                  s.wakeCluster,
+		"POST /clusters/{id}/backups/{backupId}/restore":           s.restoreBackup,
+		"GET /clusters/{id}/backups/{backupId}/restore":            s.getRestore,
+		"POST /clusters/{id}/failover":                             s.triggerFailover,
 		"PUT /clusters/{id}/encryption":                            s.updateClusterEncryption,
 		"POST /clusters/{id}/monitoring":                           s.activateMonitoring,
 		"DELETE /clusters/{id}/monitoring":                         s.deactivateMonitoring,
@@ -914,6 +926,89 @@ func (s *consoleState) updateClusterEncryption(w http.ResponseWriter, r *http.Re
 		s.encryptionPolls[cluster.Uuid] = 1 << 20
 	}
 	writeJSON(s.t, w, cluster)
+}
+
+func (s *consoleState) upgradeCluster(w http.ResponseWriter, r *http.Request) {
+	cluster, ok := s.cluster(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if cluster.Generation.Uuid == fakeGeneration2 {
+		http.Error(w, `{"message":"no upgrade available"}`, http.StatusBadRequest)
+		return
+	}
+
+	cluster.Generation = console.ClusterGeneration{Uuid: fakeGeneration2}
+	cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_UPDATING
+	s.creating[cluster.Uuid] = 2
+	writeJSON(s.t, w, console.GenerationUpgradeForClusterDto{
+		Cluster:       console.GenerationUpgradeForClusterDtoCluster{Id: cluster.Uuid, Name: cluster.Name},
+		OldGeneration: console.GenerationUpgradeForClusterDtoCluster{Id: fakeGeneration1, Name: "8.7"},
+		NewGeneration: console.GenerationUpgradeForClusterDtoCluster{Id: fakeGeneration2, Name: "8.8"},
+		OrgId:         "org",
+	})
+}
+
+func (s *consoleState) wakeCluster(w http.ResponseWriter, r *http.Request) {
+	cluster, ok := s.cluster(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_RESUMING
+	s.creating[cluster.Uuid] = 2
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) restoreBackup(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.cluster(w, r.PathValue("id")); !ok {
+		return
+	}
+	backupID := r.PathValue("backupId")
+	if state, restoring := s.restores[backupID]; restoring && state != console.RESTORESTATE_COMPLETED && state != console.RESTORESTATE_FAILED {
+		http.Error(w, `{"message":"restore in flight"}`, http.StatusConflict)
+		return
+	}
+	s.restores[backupID] = console.RESTORESTATE_PENDING
+	writeJSON(s.t, w, console.RestoreDto{Uuid: s.newID("restore"), BackupId: backupID, State: console.RESTORESTATE_PENDING})
+}
+
+func (s *consoleState) getRestore(w http.ResponseWriter, r *http.Request) {
+	backupID := r.PathValue("backupId")
+	state, ok := s.restores[backupID]
+	if !ok {
+		notFound(w, "restore")
+		return
+	}
+
+	// Each read moves the restore along.
+	switch state {
+	case console.RESTORESTATE_PENDING:
+		state = console.RESTORESTATE_IN_PROGRESS
+	case console.RESTORESTATE_IN_PROGRESS:
+		state = console.RESTORESTATE_COMPLETED
+		if s.failRestores {
+			state = console.RESTORESTATE_FAILED
+		}
+	}
+	s.restores[backupID] = state
+	writeJSON(s.t, w, console.RestoreDto{Uuid: "restore", BackupId: backupID, State: state})
+}
+
+func (s *consoleState) triggerFailover(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+
+	var req console.TriggerFailoverBody
+	if !s.decode(w, r, &req) {
+		return
+	}
+	s.failovers[clusterID] = req
+	writeJSON(s.t, w, map[string]any{
+		"newClusterId": "failover-cluster",
+		"results":      map[string]any{"backupClone": "ok", "restore": "ok"},
+	})
 }
 
 func (s *consoleState) getMembers(w http.ResponseWriter, r *http.Request) {

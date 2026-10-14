@@ -238,3 +238,25 @@ type clusterEncryption struct {
 	// Status is empty unless Type is "External".
 	Status string
 }
+
+// generationUpgrade is the generation change an upgrade started.
+type generationUpgrade struct {
+	From string
+	To   string
+}
+
+// restore is a backup restore. The states are the Console's: "PENDING",
+// "VALIDATING", "IN_PROGRESS", "COMPLETED", "FAILED" or "ABORTED".
+type restore struct {
+	ID       string
+	BackupID string
+	State    string
+}
+
+// failover is the result of a regional failover.
+type failover struct {
+	NewClusterID string
+	// Results is the JSON the Console reports for cloning the backups and
+	// restoring one of them.
+	Results string
+}
