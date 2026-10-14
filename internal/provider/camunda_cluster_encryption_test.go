@@ -101,3 +101,40 @@ func TestClusterEncryptionResourceRejectsClusterWithoutExternalEncryption(t *tes
 		},
 	})
 }
+
+func TestClusterEncryptionResourceDetectsRemovedSecondaryKey(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	config := byokClusterConfig(f, "External") + fmt.Sprintf(`
+resource "camunda_cluster_encryption" "test" {
+  cluster_id       = camunda_cluster.byok.id
+  primary_key_id   = %q
+  secondary_key_id = %q
+}
+`, fakeKeyOne, fakeKeyTwo)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check:  resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "secondary_key_id", fakeKeyTwo),
+			},
+			{
+				// The Console stops reporting the secondary key: Terraform plans to set it again.
+				PreConfig: func() {
+					state.do(func(s *consoleState) {
+						for _, cluster := range s.clusters {
+							if cluster.Encryption != nil {
+								cluster.Encryption.SecondaryKeyArn = nil
+							}
+						}
+					})
+				},
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}

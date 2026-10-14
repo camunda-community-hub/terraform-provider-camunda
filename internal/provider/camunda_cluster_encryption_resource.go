@@ -60,13 +60,10 @@ func NewCamundaClusterEncryptionResource() resource.Resource {
 			prior.PrimaryKeyARN = nullIfEmpty(found.PrimaryKeyARN)
 			prior.SecondaryKeyARN = nullIfEmpty(found.SecondaryKeyARN)
 			prior.Status = nullIfEmpty(found.Status)
-			// The key IDs are the ARNs, so a key changed outside Terraform shows as a diff.
-			if found.PrimaryKeyARN != "" {
-				prior.PrimaryKeyID = types.StringValue(found.PrimaryKeyARN)
-			}
-			if found.SecondaryKeyARN != "" {
-				prior.SecondaryKeyID = types.StringValue(found.SecondaryKeyARN)
-			}
+			// The key IDs are the ARNs, so a key changed or removed outside
+			// Terraform shows as a diff.
+			prior.PrimaryKeyID = prior.PrimaryKeyARN
+			prior.SecondaryKeyID = prior.SecondaryKeyARN
 			return prior, nil
 		},
 		// Rotating the keys is the same call as setting them.
