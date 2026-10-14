@@ -20,8 +20,19 @@ data "camunda_cluster" "one" {
   id = camunda_cluster.test.id
 }
 
-data "camunda_clusters" "all" {
+resource "camunda_cluster" "second" {
+  name        = "second"
+  channel     = data.camunda_channel.stable.id
+  region      = data.camunda_region.belgium.id
+  plan_type   = data.camunda_cluster_plan_type.plan.id
+  generation  = data.camunda_channel.stable.default_generation_id
+  auto_update = false
+
   depends_on = [camunda_cluster.test]
+}
+
+data "camunda_clusters" "all" {
+  depends_on = [camunda_cluster.test, camunda_cluster.second]
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -37,9 +48,10 @@ data "camunda_clusters" "all" {
 					resource.TestCheckNoResourceAttr("data.camunda_cluster.one", "backup_region"),
 					resource.TestMatchResourceAttr("data.camunda_cluster.one", "links.zeebe", regexp.MustCompile(`^https://`)),
 					resource.TestCheckResourceAttrPair("data.camunda_cluster.one", "owner_id", "camunda_cluster.test", "owner_id"),
-					resource.TestCheckResourceAttr("data.camunda_clusters.all", "clusters.#", "1"),
+					resource.TestCheckResourceAttr("data.camunda_clusters.all", "clusters.#", "2"),
 					resource.TestCheckResourceAttrPair("data.camunda_clusters.all", "clusters.0.id", "camunda_cluster.test", "id"),
 					resource.TestCheckResourceAttr("data.camunda_clusters.all", "clusters.0.name", "cluster"),
+					resource.TestCheckResourceAttrPair("data.camunda_clusters.all", "clusters.1.id", "camunda_cluster.second", "id"),
 				),
 			},
 		},

@@ -182,6 +182,9 @@ func (c *consoleClient) ListClusters(ctx context.Context) ([]cluster, error) {
 		return nil, apiError(err, response)
 	}
 
+	// The Console doesn't order the list, and Terraform keeps it in order.
+	slices.SortFunc(listed, func(a, b console.Cluster) int { return strings.Compare(a.Uuid, b.Uuid) })
+
 	clusters := make([]cluster, 0, len(listed))
 	for i := range listed {
 		clusters = append(clusters, *newCluster(&listed[i]))

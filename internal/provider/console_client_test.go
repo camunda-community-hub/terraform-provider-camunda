@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -642,5 +643,28 @@ func TestConsoleClientRefetchesInvitedMemberForDetails(t *testing.T) {
 	// Once refetched, nothing is left to refetch.
 	if _, err := client.GetMemberDetails(ctx, "a@example.com"); err != nil || fetches.Load() != 2 {
 		t.Fatalf("GetMemberDetails = %v after %d fetches, want one refetch in total", err, fetches.Load())
+	}
+}
+
+func TestConsoleClientListsClustersSortedByID(t *testing.T) {
+	f := newFakeConsole(t)
+	f.mux.HandleFunc("GET /clusters", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, []console.Cluster{
+			clusterWithStatus("c-3", console.CLUSTERCOMPONENTSTATUS_HEALTHY),
+			clusterWithStatus("c-1", console.CLUSTERCOMPONENTSTATUS_HEALTHY),
+			clusterWithStatus("c-2", console.CLUSTERCOMPONENTSTATUS_HEALTHY),
+		})
+	})
+
+	clusters, err := f.client(t).ListClusters(context.Background())
+	if err != nil {
+		t.Fatalf("ListClusters: %v", err)
+	}
+	var ids []string
+	for _, c := range clusters {
+		ids = append(ids, c.ID)
+	}
+	if want := []string{"c-1", "c-2", "c-3"}; !slices.Equal(ids, want) {
+		t.Fatalf("cluster IDs = %v, want %v", ids, want)
 	}
 }
