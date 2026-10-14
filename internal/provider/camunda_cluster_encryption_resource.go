@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -106,10 +108,12 @@ func clusterEncryptionSchema() schema.Schema {
 			"primary_key_id": schema.StringAttribute{
 				MarkdownDescription: "ARN of the AWS KMS key in the cluster's primary region. Single-region and multi-region (`mrk-...`) keys are accepted, as long as the region in the ARN matches the cluster's.",
 				Required:            true,
+				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"secondary_key_id": schema.StringAttribute{
 				MarkdownDescription: "ARN of the AWS KMS key in the cluster's backup region. Required for dual-region clusters, must be omitted for single-region clusters, and must differ from `primary_key_id`.",
 				Optional:            true,
+				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"primary_key_arn":   computed("ARN of the primary key, as the Console reports it."),
 			"secondary_key_arn": computed("ARN of the secondary key, as the Console reports it. Null if there is none."),

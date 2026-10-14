@@ -138,3 +138,32 @@ resource "camunda_cluster_encryption" "test" {
 		},
 	})
 }
+
+func TestClusterEncryptionResourceRejectsEmptyKeyIDs(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+
+	for name, keys := range map[string]string{
+		"secondary": fmt.Sprintf(`primary_key_id = %q
+  secondary_key_id = ""`, fakeKeyOne),
+		"primary": `primary_key_id = ""`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: f.providerFactories(),
+				Steps: []resource.TestStep{
+					{
+						// An empty key is sent as no key and read back as null.
+						Config: byokClusterConfig(f, "External") + `
+resource "camunda_cluster_encryption" "test" {
+  cluster_id = camunda_cluster.byok.id
+  ` + keys + `
+}
+`,
+						ExpectError: regexp.MustCompile(`(?s)_key_id.*string length must be at least 1`),
+					},
+				},
+			})
+		})
+	}
+}
