@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -911,4 +912,106 @@ func (c *consoleClient) SetBackupSchedule(ctx context.Context, clusterID, schedu
 func (c *consoleClient) DeleteBackupSchedule(ctx context.Context, clusterID string) error {
 	response, err := c.api.DeleteSchedule(ctx, clusterID).Execute()
 	return apiError(err, response)
+}
+
+// Secure connectivity
+
+// ActivateSecureConnectivity starts creating the cluster's private endpoint;
+// see WaitSecureConnectivityActive. It fails if it is already activated.
+func (c *consoleClient) ActivateSecureConnectivity(ctx context.Context, clusterID string, principals, regions []string) error {
+	response, err := c.api.ActivateSecureConnectivity(ctx, clusterID).
+		ActivateSecureConnectivityRequest(console.ActivateSecureConnectivityRequest{
+			AllowedPrincipals: principals,
+			AllowedRegions:    regions,
+		}).
+		Execute()
+	return apiError(err, response)
+}
+
+// DeactivateSecureConnectivity removes the cluster's private endpoint, or
+// returns errNotFound when it isn't activated or the cluster does not exist.
+func (c *consoleClient) DeactivateSecureConnectivity(ctx context.Context, clusterID string) error {
+	response, err := c.api.DeactivateSecureConnectivity(ctx, clusterID).Execute()
+	err = apiError(err, response)
+	if err != nil && response != nil && response.StatusCode == http.StatusConflict {
+		return fmt.Errorf("%w: secure connectivity of cluster %s is not activated", errNotFound, clusterID)
+	}
+	return err
+}
+
+// GetSecureConnectivity returns the cluster's secure connectivity, or
+// errNotFound when it isn't activated or the cluster does not exist.
+func (c *consoleClient) GetSecureConnectivity(ctx context.Context, clusterID string) (*secureConnectivity, error) {
+	notActivated := fmt.Errorf("%w: secure connectivity of cluster %s is not activated", errNotFound, clusterID)
+
+	found, response, err := c.api.GetSecureConnectivityStatus(ctx, clusterID).Execute()
+	if err != nil {
+		if hasEmptyStatus(err) {
+			return nil, notActivated
+		}
+		return nil, apiError(err, response)
+	}
+
+	dto := found.Status.SecureConnectivityDto
+	if dto == nil {
+		return nil, notActivated
+	}
+
+	result := &secureConnectivity{
+		AllowedPrincipals: dto.Spec.AllowedPrincipals,
+		AllowedRegions:    dto.Spec.AllowedRegions,
+		ServiceName:       dto.Status.Endpoint.ServiceName,
+		PrivateDNSName:    dto.Status.Endpoint.PrivateDnsName,
+		EndpointRegion:    dto.Status.Endpoint.Region,
+		EndpointType:      dto.Status.Endpoint.Type,
+		ConnectionCount:   int64(dto.Status.EndpointConnectionCount),
+	}
+	for _, condition := range dto.Status.Conditions {
+		result.Conditions = append(result.Conditions, secureConnectivityCondition{
+			Type:    condition.Type,
+			Status:  condition.Status,
+			Reason:  condition.Reason,
+			Message: condition.Message,
+		})
+	}
+	return result, nil
+}
+
+// hasEmptyStatus reports whether err is the generated client failing to decode
+// the status the Console returns without secure connectivity, `{"status": {}}`:
+// it matches neither variant of the status the spec declares.
+func hasEmptyStatus(err error) bool {
+	var openAPIErr *console.GenericOpenAPIError
+	if !errors.As(err, &openAPIErr) {
+		return false
+	}
+
+	var body struct {
+		Status map[string]json.RawMessage `json:"status"`
+	}
+	return json.Unmarshal(openAPIErr.Body(), &body) == nil && body.Status != nil && len(body.Status) == 0
+}
+
+// WaitSecureConnectivityActive blocks until the Console has created the
+// cluster's private endpoint.
+func (c *consoleClient) WaitSecureConnectivityActive(ctx context.Context, clusterID string) error {
+	const pending, active = "Pending", "Active"
+
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{pending},
+		target:  []string{active},
+		refresh: func() (string, error) {
+			found, err := c.GetSecureConnectivity(ctx, clusterID)
+			switch {
+			case errors.Is(err, errNotFound):
+				// Not visible yet right after activating it.
+				return pending, nil
+			case err != nil:
+				return "", err
+			case found.ServiceName == "":
+				return pending, nil
+			}
+			return active, nil
+		},
+	})
 }

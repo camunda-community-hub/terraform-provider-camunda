@@ -162,3 +162,25 @@ type backup struct {
 	GenerationID   string // empty for legacy backups
 	GenerationName string
 }
+
+// secureConnectivity is a cluster's secure connectivity (private link)
+// configuration and the endpoint the Console created for it.
+type secureConnectivity struct {
+	AllowedPrincipals []string
+	AllowedRegions    []string
+	// Empty until the Console has created the endpoint.
+	ServiceName     string
+	PrivateDNSName  string
+	EndpointRegion  string
+	EndpointType    string
+	ConnectionCount int64
+	Conditions      []secureConnectivityCondition
+}
+
+// secureConnectivityCondition is one status condition of the endpoint.
+type secureConnectivityCondition struct {
+	Type    string
+	Status  string
+	Reason  string
+	Message string
+}
