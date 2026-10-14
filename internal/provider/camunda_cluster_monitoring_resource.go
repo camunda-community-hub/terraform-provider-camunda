@@ -14,6 +14,7 @@ type camundaClusterMonitoringData struct {
 	MetricsTarget types.String `tfsdk:"metrics_target"`
 	MetricsScheme types.String `tfsdk:"metrics_scheme"`
 	MetricsPath   types.String `tfsdk:"metrics_path"`
+	Conditions    types.List   `tfsdk:"conditions"`
 }
 
 func NewCamundaClusterMonitoringResource() resource.Resource {
@@ -37,6 +38,7 @@ func NewCamundaClusterMonitoringResource() resource.Resource {
 			plan.MetricsTarget = types.StringNull()
 			plan.MetricsScheme = types.StringNull()
 			plan.MetricsPath = types.StringNull()
+			plan.Conditions = types.ListNull(types.StringType)
 			return plan, nil
 		},
 		// The Console sets up the metrics endpoint in the background.
@@ -54,13 +56,14 @@ func NewCamundaClusterMonitoringResource() resource.Resource {
 			prior.MetricsTarget = nullIfEmpty(found.Target)
 			prior.MetricsScheme = nullIfEmpty(found.Scheme)
 			prior.MetricsPath = nullIfEmpty(found.Path)
+			prior.Conditions = stringList(found.Conditions)
 			return prior, nil
 		},
 		delete: func(op *op, prior camundaClusterMonitoringData) error {
 			return op.client.DeactivateMonitoring(op.ctx, prior.ClusterID.ValueString())
 		},
 		importID: func(clusterID string) (camundaClusterMonitoringData, error) {
-			return camundaClusterMonitoringData{Id: types.StringValue(clusterID)}, nil
+			return camundaClusterMonitoringData{Id: types.StringValue(clusterID), Conditions: types.ListNull(types.StringType)}, nil
 		},
 	}
 }
@@ -91,6 +94,11 @@ func clusterMonitoringSchema() schema.Schema {
 			"metrics_target": computed("Host to scrape the cluster's metrics from."),
 			"metrics_scheme": computed("Scheme (`http` or `https`) to scrape the metrics with."),
 			"metrics_path":   computed("Path to scrape the metrics from."),
+			"conditions": schema.ListAttribute{
+				MarkdownDescription: "Status conditions of the external monitoring, as reported by the Console. Each is a JSON document, so use `jsondecode` to read it.",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
 		},
 	}
 }

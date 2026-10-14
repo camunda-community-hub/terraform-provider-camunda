@@ -42,6 +42,8 @@ func TestClusterMonitoringResource(t *testing.T) {
 					resource.TestCheckResourceAttr("camunda_cluster_monitoring.test", "metrics_target", "metrics.example.com"),
 					resource.TestCheckResourceAttr("camunda_cluster_monitoring.test", "metrics_scheme", "https"),
 					resource.TestCheckResourceAttr("camunda_cluster_monitoring.test", "metrics_path", "/metrics"),
+					resource.TestCheckResourceAttr("camunda_cluster_monitoring.test", "conditions.#", "1"),
+					resource.TestCheckResourceAttr("camunda_cluster_monitoring.test", "conditions.0", `{"status":"True","type":"Ready"}`),
 				),
 			},
 			{

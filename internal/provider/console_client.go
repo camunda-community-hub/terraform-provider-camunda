@@ -1101,6 +1101,13 @@ func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) ([]
 			Scheme: byom.MetricsEndpoint.Scheme,
 			Path:   byom.MetricsEndpoint.Path,
 		}
+		for _, condition := range byom.Conditions {
+			encoded, err := json.Marshal(condition)
+			if err != nil {
+				return nil, nil, fmt.Errorf("unable to read monitoring condition: %w", err)
+			}
+			status.Conditions = append(status.Conditions, string(encoded))
+		}
 	}
 	return newMonitoringClients(found.Clients), status, nil
 }

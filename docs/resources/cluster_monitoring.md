@@ -27,6 +27,7 @@ resource "camunda_cluster_monitoring" "test" {
 
 ### Read-Only
 
+- `conditions` (List of String) Status conditions of the external monitoring, as reported by the Console. Each is a JSON document, so use `jsondecode` to read it.
 - `id` (String) ID, which is the cluster ID
 - `metrics_path` (String) Path to scrape the metrics from.
 - `metrics_scheme` (String) Scheme (`http` or `https`) to scrape the metrics with.

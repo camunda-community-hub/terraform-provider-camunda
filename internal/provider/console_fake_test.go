@@ -772,7 +772,7 @@ func (s *consoleState) listMonitoringClients(w http.ResponseWriter, r *http.Requ
 		} else {
 			status = map[string]any{
 				"metricsEndpoint": map[string]any{"target": "metrics.example.com", "scheme": "https", "path": "/metrics"},
-				"conditions":      []any{},
+				"conditions":      []any{map[string]any{"type": "Ready", "status": "True"}},
 			}
 		}
 	}

@@ -204,6 +204,9 @@ type monitoring struct {
 	Target string
 	Scheme string
 	Path   string
+	// Conditions are the status conditions the Console reports, each as JSON
+	// because the API doesn't declare their shape.
+	Conditions []string
 }
 
 // monitoringClient is a client that may scrape a cluster's metrics. Its
