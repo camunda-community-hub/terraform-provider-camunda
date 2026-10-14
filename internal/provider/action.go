@@ -62,6 +62,11 @@ func (a *managedAction[M]) ValidateConfig(ctx context.Context, req action.Valida
 }
 
 func (a *managedAction[M]) Invoke(ctx context.Context, req action.InvokeRequest, resp *action.InvokeResponse) {
+	// Validation at plan time skips what isn't known yet, so check again now
+	// that the configuration is resolved, before anything irreversible runs.
+	if a.validate != nil {
+		resp.Diagnostics.Append(a.validate(ctx, req.Config)...)
+	}
 	var config M
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {

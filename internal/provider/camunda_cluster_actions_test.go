@@ -291,3 +291,47 @@ func TestClusterRestoreActionReportsSupersededRestore(t *testing.T) {
 		t.Fatalf("errors = %v, want the superseding restore", errs)
 	}
 }
+
+func TestClusterFailoverActionValidatesTheResolvedConfigBeforeInvoking(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	state.do(func(s *consoleState) { s.clusters["c1"] = &console.Cluster{Uuid: "c1"} })
+	ctx := context.Background()
+	a := NewCamundaClusterFailoverAction()
+	schemaResp := &action.SchemaResponse{}
+	a.Schema(ctx, action.SchemaRequest{}, schemaResp)
+	objectType := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	unknown := tftypes.NewValue(tftypes.String, tftypes.UnknownValue)
+	listType := tftypes.List{ElementType: tftypes.String}
+
+	// At plan time the restore ID isn't known yet, so validation lets it through.
+	planned := &action.ValidateConfigResponse{}
+	a.(action.ActionWithValidateConfig).ValidateConfig(ctx, action.ValidateConfigRequest{
+		Config: tfsdk.Config{Schema: schemaResp.Schema, Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{
+			"cluster_id":        stringValue("c1"),
+			"backup_ids":        tftypes.NewValue(listType, []tftypes.Value{stringValue("b1")}),
+			"restore_backup_id": unknown,
+		})},
+	}, planned)
+	if planned.Diagnostics.HasError() {
+		t.Fatalf("plan-time validation rejected an unknown restore ID: %v", planned.Diagnostics)
+	}
+
+	// It then resolves to a backup that isn't among those to clone: nothing may be sent.
+	progress, errs := invokeAction(t, a, f.client(t), map[string]tftypes.Value{
+		"cluster_id":        stringValue("c1"),
+		"backup_ids":        tftypes.NewValue(listType, []tftypes.Value{stringValue("b1")}),
+		"restore_backup_id": stringValue("b2"),
+	})
+	if len(errs) != 1 || !strings.Contains(errs[0], "must be one of backup_ids") {
+		t.Fatalf("errors = %v, want the membership error", errs)
+	}
+	if len(progress) != 0 {
+		t.Errorf("progress = %v, want none", progress)
+	}
+	state.do(func(s *consoleState) {
+		if len(s.failovers) != 0 {
+			t.Errorf("a failover was sent despite the invalid configuration: %v", s.failovers)
+		}
+	})
+}
