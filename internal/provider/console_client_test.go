@@ -594,3 +594,51 @@ func TestConsoleClientAwaitStatus(t *testing.T) {
 		}
 	})
 }
+
+func TestConsoleClientRefetchesInvitedMemberForDetails(t *testing.T) {
+	f := newFakeConsole(t)
+	var invited atomic.Bool
+	var fetches atomic.Int32
+	f.mux.HandleFunc("GET /members", func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		members := []console.Member{{Email: "a@example.com", Name: "A", Roles: []console.OrganizationRole{console.ORGANIZATIONROLE_DEVELOPER}}}
+		if invited.Load() {
+			members = append(members, console.Member{
+				Email: "new@example.com", Name: "New Person", InvitePending: true,
+				Roles: []console.OrganizationRole{console.ORGANIZATIONROLE_ADMIN},
+			})
+		}
+		writeJSON(t, w, members)
+	})
+	f.mux.HandleFunc("POST /members/{email}", func(w http.ResponseWriter, r *http.Request) {
+		invited.Store(true)
+		w.WriteHeader(http.StatusOK)
+	})
+	client := f.client(t)
+	ctx := context.Background()
+
+	if _, err := client.GetMember(ctx, "a@example.com"); err != nil {
+		t.Fatalf("GetMember: %v", err)
+	}
+	if err := client.SetMemberRoles(ctx, "new@example.com", []string{"admin"}); err != nil {
+		t.Fatalf("SetMemberRoles: %v", err)
+	}
+
+	// The resource needs nothing but the roles, so it isn't made to refetch.
+	if _, err := client.GetMember(ctx, "new@example.com"); err != nil || fetches.Load() != 1 {
+		t.Fatalf("GetMember = %v after %d fetches, want a cache hit", err, fetches.Load())
+	}
+
+	found, err := client.GetMemberDetails(ctx, "new@example.com")
+	if err != nil {
+		t.Fatalf("GetMemberDetails: %v", err)
+	}
+	if found.Name != "New Person" || !found.InvitePending {
+		t.Errorf("member = %+v, want the name and pending invitation the Console reports", found)
+	}
+
+	// Once refetched, nothing is left to refetch.
+	if _, err := client.GetMemberDetails(ctx, "a@example.com"); err != nil || fetches.Load() != 2 {
+		t.Fatalf("GetMemberDetails = %v after %d fetches, want one refetch in total", err, fetches.Load())
+	}
+}

@@ -49,7 +49,7 @@ func NewCamundaOrganizationMemberDataSource() datasource.DataSource {
 			}
 		},
 		read: func(op *op, config organizationMemberDataSourceData) (organizationMemberDataSourceData, error) {
-			found, err := op.client.GetMember(op.ctx, config.Email.ValueString())
+			found, err := op.client.GetMemberDetails(op.ctx, config.Email.ValueString())
 			if err != nil {
 				return config, err
 			}

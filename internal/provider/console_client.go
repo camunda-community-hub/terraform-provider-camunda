@@ -383,6 +383,10 @@ type memberCache struct {
 	mu        sync.Mutex
 	members   []console.Member
 	fetchedAt time.Time
+	// invited are the members added by a write, whose cached entry only has
+	// an email and roles. Reads that need the complete member refetch the
+	// list while any are left.
+	invited map[string]bool
 
 	// Overridden in tests.
 	now func() time.Time
@@ -401,10 +405,22 @@ func (m *memberCache) time() time.Time {
 // The Console API only offers the full member list, which is cached for
 // memberCacheTTL. Concurrent callers wait for a single fetch.
 func (c *consoleClient) GetMember(ctx context.Context, email string) (*member, error) {
+	return c.getMember(ctx, email, false)
+}
+
+// GetMemberDetails is GetMember for callers that report everything about the
+// member, such as the member's name and whether the invitation is pending. It
+// refetches the list when the member was just invited, because the cache then
+// only knows their email and roles.
+func (c *consoleClient) GetMemberDetails(ctx context.Context, email string) (*member, error) {
+	return c.getMember(ctx, email, true)
+}
+
+func (c *consoleClient) getMember(ctx context.Context, email string, complete bool) (*member, error) {
 	c.members.mu.Lock()
 	defer c.members.mu.Unlock()
 
-	members, err := c.cachedMembers(ctx)
+	members, err := c.cachedMembers(ctx, complete)
 	if err != nil {
 		return nil, err
 	}
@@ -419,12 +435,12 @@ func (c *consoleClient) GetMember(ctx context.Context, email string) (*member, e
 }
 
 // ListMembers returns all organization members, from the same cache as
-// GetMember.
+// GetMember, refetched when it holds members that were just invited.
 func (c *consoleClient) ListMembers(ctx context.Context) ([]member, error) {
 	c.members.mu.Lock()
 	defer c.members.mu.Unlock()
 
-	listed, err := c.cachedMembers(ctx)
+	listed, err := c.cachedMembers(ctx, true)
 	if err != nil {
 		return nil, err
 	}
@@ -437,9 +453,11 @@ func (c *consoleClient) ListMembers(ctx context.Context) ([]member, error) {
 }
 
 // cachedMembers returns the member list, fetching it when the cache is empty
-// or older than memberCacheTTL. The caller holds c.members.mu.
-func (c *consoleClient) cachedMembers(ctx context.Context) ([]console.Member, error) {
-	if c.members.members == nil || c.members.time().Sub(c.members.fetchedAt) >= memberCacheTTL {
+// or older than memberCacheTTL, or, if complete, when it holds invited members
+// that are not fully known. The caller holds c.members.mu.
+func (c *consoleClient) cachedMembers(ctx context.Context, complete bool) ([]console.Member, error) {
+	stale := c.members.members == nil || c.members.time().Sub(c.members.fetchedAt) >= memberCacheTTL
+	if stale || (complete && len(c.members.invited) > 0) {
 		members, response, err := c.api.GetMembers(ctx).Execute()
 		if err != nil {
 			return nil, apiError(err, response)
@@ -449,6 +467,7 @@ func (c *consoleClient) cachedMembers(ctx context.Context) ([]console.Member, er
 		}
 		c.members.members = members
 		c.members.fetchedAt = c.members.time()
+		c.members.invited = nil
 	}
 	return c.members.members, nil
 }
@@ -548,6 +567,10 @@ func (m *memberCache) setRoles(email string, assigned []console.AssignableOrgani
 		}
 	}
 	m.members = append(m.members, console.Member{Email: email, Roles: roles})
+	if m.invited == nil {
+		m.invited = map[string]bool{}
+	}
+	m.invited[email] = true
 }
 
 func (m *memberCache) remove(email string) {
@@ -557,6 +580,7 @@ func (m *memberCache) remove(email string) {
 	m.members = slices.DeleteFunc(m.members, func(member console.Member) bool {
 		return member.Email == email
 	})
+	delete(m.invited, email)
 }
 
 // Parameters
