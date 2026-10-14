@@ -67,7 +67,7 @@ func NewCamundaClusterSecureConnectivityResource() resource.Resource {
 				return plan, err
 			}
 
-			// The plan is saved before waiting for the endpoint, so nothing
+			// The plan is saved before waiting for the endpoint service, so nothing
 			// may be unknown; the read after the wait fills these in.
 			plan.Id = plan.ClusterID
 			plan.ServiceName = types.StringNull()
@@ -79,7 +79,7 @@ func NewCamundaClusterSecureConnectivityResource() resource.Resource {
 			plan.Connections = types.ListNull(secureConnectivityConnectionType)
 			return plan, nil
 		},
-		// The Console creates the private endpoint in the background.
+		// The Console creates the endpoint service in the background.
 		awaitReady: func(op *op, created camundaClusterSecureConnectivityData) error {
 			return op.client.WaitSecureConnectivityActive(op.ctx, created.ClusterID.ValueString())
 		},
@@ -163,8 +163,9 @@ func clusterSecureConnectivitySchema() schema.Schema {
 	}
 
 	return schema.Schema{
-		MarkdownDescription: "Manage secure connectivity (a private endpoint) of a cluster on Camunda SaaS. " +
-			"Creating the resource activates it and waits until the endpoint exists; destroying it deactivates it. " +
+		MarkdownDescription: "Manage secure connectivity of a cluster on Camunda SaaS, which exposes the cluster through an AWS PrivateLink endpoint service that Camunda owns. " +
+			"Creating the resource activates it and waits until the endpoint service exists; destroying it deactivates it. " +
+			"The resource does not create anything in your AWS account: to connect, create an interface endpoint (for example with `aws_vpc_endpoint`) for the `service_name` in a VPC of an allowed principal and region. " +
 			"The Console can't change the allowed principals or regions of an active endpoint, so changing them replaces the resource. " +
 			"Only available if the cluster's plan supports it.",
 
@@ -180,26 +181,26 @@ func clusterSecureConnectivitySchema() schema.Schema {
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"allowed_principals": schema.SetAttribute{
-				MarkdownDescription: "The principals (for example AWS account ARNs) allowed to connect to the endpoint. Changing it replaces the resource.",
+				MarkdownDescription: "The principals (for example AWS account ARNs) allowed to connect to the endpoint service. Changing it replaces the resource.",
 				Required:            true,
 				ElementType:         types.StringType,
 				Validators:          []validator.Set{setvalidator.SizeAtLeast(1)},
 				PlanModifiers:       []planmodifier.Set{setplanmodifier.RequiresReplace()},
 			},
 			"allowed_regions": schema.SetAttribute{
-				MarkdownDescription: "The regions allowed to connect to the endpoint. Changing it replaces the resource.",
+				MarkdownDescription: "The regions allowed to connect to the endpoint service. Changing it replaces the resource.",
 				Required:            true,
 				ElementType:         types.StringType,
 				Validators:          []validator.Set{setvalidator.SizeAtLeast(1)},
 				PlanModifiers:       []planmodifier.Set{setplanmodifier.RequiresReplace()},
 			},
-			"service_name":     computed("Name of the endpoint service to connect to."),
-			"private_dns_name": computed("Private DNS name of the endpoint."),
-			"endpoint_region":  computed("Region of the endpoint."),
-			"endpoint_type":    computed("Type of the endpoint."),
+			"service_name":     computed("Name of the endpoint service to create an interface endpoint for."),
+			"private_dns_name": computed("Private DNS name of the endpoint service."),
+			"endpoint_region":  computed("Region of the endpoint service."),
+			"endpoint_type":    computed("Type of the endpoint service."),
 			"connection_count": schema.Int64Attribute{
 				Computed:            true,
-				MarkdownDescription: "Number of connections to the endpoint.",
+				MarkdownDescription: "Number of endpoints connected to the endpoint service.",
 			},
 			"endpoint_connections": schema.ListNestedAttribute{
 				Computed:            true,
@@ -216,7 +217,7 @@ func clusterSecureConnectivitySchema() schema.Schema {
 			},
 			"conditions": schema.ListNestedAttribute{
 				Computed:            true,
-				MarkdownDescription: "Status conditions of the endpoint, as reported by the Console.",
+				MarkdownDescription: "Status conditions of the endpoint service, as reported by the Console.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"type":                 computed("Type of the condition."),

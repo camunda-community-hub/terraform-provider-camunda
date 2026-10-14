@@ -3,12 +3,12 @@
 page_title: "camunda_cluster_secure_connectivity Resource - terraform-provider-camunda"
 subcategory: ""
 description: |-
-  Manage secure connectivity (a private endpoint) of a cluster on Camunda SaaS. Creating the resource activates it and waits until the endpoint exists; destroying it deactivates it. The Console can't change the allowed principals or regions of an active endpoint, so changing them replaces the resource. Only available if the cluster's plan supports it.
+  Manage secure connectivity of a cluster on Camunda SaaS, which exposes the cluster through an AWS PrivateLink endpoint service that Camunda owns. Creating the resource activates it and waits until the endpoint service exists; destroying it deactivates it. The resource does not create anything in your AWS account: to connect, create an interface endpoint (for example with aws_vpc_endpoint) for the service_name in a VPC of an allowed principal and region. The Console can't change the allowed principals or regions of an active endpoint, so changing them replaces the resource. Only available if the cluster's plan supports it.
 ---
 
 # camunda_cluster_secure_connectivity (Resource)
 
-Manage secure connectivity (a private endpoint) of a cluster on Camunda SaaS. Creating the resource activates it and waits until the endpoint exists; destroying it deactivates it. The Console can't change the allowed principals or regions of an active endpoint, so changing them replaces the resource. Only available if the cluster's plan supports it.
+Manage secure connectivity of a cluster on Camunda SaaS, which exposes the cluster through an AWS PrivateLink endpoint service that Camunda owns. Creating the resource activates it and waits until the endpoint service exists; destroying it deactivates it. The resource does not create anything in your AWS account: to connect, create an interface endpoint (for example with `aws_vpc_endpoint`) for the `service_name` in a VPC of an allowed principal and region. The Console can't change the allowed principals or regions of an active endpoint, so changing them replaces the resource. Only available if the cluster's plan supports it.
 
 ## Example Usage
 
@@ -25,20 +25,20 @@ resource "camunda_cluster_secure_connectivity" "test" {
 
 ### Required
 
-- `allowed_principals` (Set of String) The principals (for example AWS account ARNs) allowed to connect to the endpoint. Changing it replaces the resource.
-- `allowed_regions` (Set of String) The regions allowed to connect to the endpoint. Changing it replaces the resource.
+- `allowed_principals` (Set of String) The principals (for example AWS account ARNs) allowed to connect to the endpoint service. Changing it replaces the resource.
+- `allowed_regions` (Set of String) The regions allowed to connect to the endpoint service. Changing it replaces the resource.
 - `cluster_id` (String) Cluster ID
 
 ### Read-Only
 
-- `conditions` (Attributes List) Status conditions of the endpoint, as reported by the Console. (see [below for nested schema](#nestedatt--conditions))
-- `connection_count` (Number) Number of connections to the endpoint.
+- `conditions` (Attributes List) Status conditions of the endpoint service, as reported by the Console. (see [below for nested schema](#nestedatt--conditions))
+- `connection_count` (Number) Number of endpoints connected to the endpoint service.
 - `endpoint_connections` (Attributes List) The endpoints in customer accounts that are connected to the endpoint service. (see [below for nested schema](#nestedatt--endpoint_connections))
-- `endpoint_region` (String) Region of the endpoint.
-- `endpoint_type` (String) Type of the endpoint.
+- `endpoint_region` (String) Region of the endpoint service.
+- `endpoint_type` (String) Type of the endpoint service.
 - `id` (String) ID, which is the cluster ID
-- `private_dns_name` (String) Private DNS name of the endpoint.
-- `service_name` (String) Name of the endpoint service to connect to.
+- `private_dns_name` (String) Private DNS name of the endpoint service.
+- `service_name` (String) Name of the endpoint service to create an interface endpoint for.
 
 <a id="nestedatt--conditions"></a>
 ### Nested Schema for `conditions`

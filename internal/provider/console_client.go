@@ -916,7 +916,7 @@ func (c *consoleClient) DeleteBackupSchedule(ctx context.Context, clusterID stri
 
 // Secure connectivity
 
-// ActivateSecureConnectivity starts creating the cluster's private endpoint;
+// ActivateSecureConnectivity starts creating the cluster's endpoint service;
 // see WaitSecureConnectivityActive. It fails if it is already activated.
 func (c *consoleClient) ActivateSecureConnectivity(ctx context.Context, clusterID string, principals, regions []string) error {
 	response, err := c.api.ActivateSecureConnectivity(ctx, clusterID).
@@ -928,7 +928,7 @@ func (c *consoleClient) ActivateSecureConnectivity(ctx context.Context, clusterI
 	return apiError(err, response)
 }
 
-// DeactivateSecureConnectivity removes the cluster's private endpoint, or
+// DeactivateSecureConnectivity removes the cluster's endpoint service, or
 // returns errNotFound when it isn't activated or the cluster does not exist.
 func (c *consoleClient) DeactivateSecureConnectivity(ctx context.Context, clusterID string) error {
 	response, err := c.api.DeactivateSecureConnectivity(ctx, clusterID).Execute()
@@ -1003,7 +1003,7 @@ func hasEmptyStatus(err error) bool {
 }
 
 // WaitSecureConnectivityActive blocks until the Console has created the
-// cluster's private endpoint.
+// cluster's endpoint service.
 func (c *consoleClient) WaitSecureConnectivityActive(ctx context.Context, clusterID string) error {
 	const pending, active = "Pending", "Active"
 
