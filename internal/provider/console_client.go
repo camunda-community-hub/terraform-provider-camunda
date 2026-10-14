@@ -814,6 +814,9 @@ func (c *consoleClient) ListBackups(ctx context.Context, clusterID string) ([]ba
 		return nil, apiError(err, response)
 	}
 
+	// The Console doesn't order the list, and Terraform keeps it in order.
+	slices.SortFunc(listed, func(a, b console.BackupDto) int { return strings.Compare(a.Uuid, b.Uuid) })
+
 	backups := make([]backup, 0, len(listed))
 	for i := range listed {
 		backups = append(backups, newBackup(&listed[i]))

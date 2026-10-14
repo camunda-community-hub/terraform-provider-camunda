@@ -668,3 +668,37 @@ func TestConsoleClientListsClustersSortedByID(t *testing.T) {
 		t.Fatalf("cluster IDs = %v, want %v", ids, want)
 	}
 }
+
+func TestConsoleClientListsBackupsSortedByID(t *testing.T) {
+	f := newFakeConsole(t)
+	order := [][]string{{"b-3", "b-1", "b-2"}, {"b-2", "b-3", "b-1"}}
+	var requests atomic.Int32
+	f.mux.HandleFunc("GET /clusters/{id}/backups", func(w http.ResponseWriter, r *http.Request) {
+		ids := order[int(requests.Add(1)-1)%len(order)]
+		backups := []console.BackupDto{}
+		for _, id := range ids {
+			complete := console.BACKUPSTATUS_COMPLETE
+			backups = append(backups, console.BackupDto{
+				Uuid: id, Name: id, Status: complete, ZeebeStatus: complete,
+				OperateStatus: complete, TasklistStatus: complete, OptimizeStatus: complete,
+			})
+		}
+		writeJSON(t, w, backups)
+	})
+	client := f.client(t)
+
+	// Whatever order the Console answers in, the IDs come back the same.
+	for range order {
+		backups, err := client.ListBackups(context.Background(), "c1")
+		if err != nil {
+			t.Fatalf("ListBackups: %v", err)
+		}
+		var ids []string
+		for _, b := range backups {
+			ids = append(ids, b.ID)
+		}
+		if want := []string{"b-1", "b-2", "b-3"}; !slices.Equal(ids, want) {
+			t.Fatalf("backup IDs = %v, want %v", ids, want)
+		}
+	}
+}
