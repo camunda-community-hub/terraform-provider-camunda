@@ -214,10 +214,24 @@ func (r *managedResource[M]) readInto(op *op, operation string, prior M, state *
 	current, err := r.read(op, prior)
 	if err != nil {
 		r.fail(op.diags, operation, prior, fmt.Errorf("reading it back: %w", err))
+		keepCompletedWrite(op, prior, state)
 		return
 	}
 
 	op.diags.Append(state.Set(op.ctx, &current)...)
+}
+
+// keepCompletedWrite saves what a successful create or update returned when
+// reading it back failed, so that what only the write reports (IDs, one-time
+// secrets) isn't lost: Terraform taints the resource instead of orphaning the
+// object or keeping stale values. It only can when nothing in the model is
+// unknown.
+func keepCompletedWrite[M any](op *op, written M, state *tfsdk.State) {
+	scratch := tfsdk.State{Schema: state.Schema, Raw: state.Raw}
+	if diags := scratch.Set(op.ctx, &written); diags.HasError() || !scratch.Raw.IsFullyKnown() {
+		return
+	}
+	state.Raw = scratch.Raw
 }
 
 // diagsError turns framework diagnostics met inside a hook into an error.
