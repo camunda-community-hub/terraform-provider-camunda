@@ -40,11 +40,15 @@ func NewCamundaAuditLogDataSource() datasource.DataSource {
 			config.Id = types.StringValue("audit-log")
 			config.Events = []auditEventDataItem{}
 			for _, e := range events {
+				timestamp := types.Int64Null()
+				if e.Timestamp != nil {
+					timestamp = types.Int64Value(*e.Timestamp)
+				}
 				config.Events = append(config.Events, auditEventDataItem{
 					Service:                  types.StringValue(e.Service),
 					Audit:                    types.StringValue(e.Audit),
 					AuditType:                types.StringValue(e.AuditType),
-					Timestamp:                types.Int64Value(e.Timestamp),
+					Timestamp:                timestamp,
 					UserID:                   types.StringValue(e.UserID),
 					Entity:                   types.StringValue(e.Entity),
 					EntityID:                 types.StringValue(e.EntityID),
@@ -80,7 +84,7 @@ func auditLogSchema() schema.Schema {
 						"audit_type": str("The kind of action, such as `create` or `delete`."),
 						"timestamp": schema.Int64Attribute{
 							Computed:            true,
-							MarkdownDescription: "When the event happened, in milliseconds since the Unix epoch.",
+							MarkdownDescription: "When the event happened, in milliseconds since the Unix epoch. Null if not reported.",
 						},
 						"user_id":                     str("The user or client that caused the event."),
 						"entity":                      str("The kind of object the event concerns."),

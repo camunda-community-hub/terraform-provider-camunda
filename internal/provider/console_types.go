@@ -80,8 +80,9 @@ type auditEvent struct {
 	Audit   string
 	// AuditType is the kind of action, such as "create" or "delete".
 	AuditType string
-	// Timestamp is in milliseconds since the Unix epoch.
-	Timestamp                int64
+	// Timestamp is in milliseconds since the Unix epoch; nil when the Console
+	// doesn't report one.
+	Timestamp                *int64
 	UserID                   string
 	Entity                   string
 	EntityID                 string

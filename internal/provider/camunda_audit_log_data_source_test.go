@@ -21,6 +21,7 @@ data "camunda_audit_log" "test" {}
 					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.#", "2"),
 					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.0.audit", "Cluster created"),
 					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.0.timestamp", "1700000000000"),
+					resource.TestCheckNoResourceAttr("data.camunda_audit_log.test", "events.1.timestamp"),
 					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.0.parent_entity", ""),
 					resource.TestCheckResourceAttr("data.camunda_audit_log.test", "events.1.parent_entity", "cluster"),
 				),

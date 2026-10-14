@@ -574,11 +574,16 @@ func (c *consoleClient) GetAuditLog(ctx context.Context) ([]auditEvent, error) {
 
 	result := make([]auditEvent, 0, len(events))
 	for _, e := range events {
+		var timestamp *int64
+		if e.Timestamp != nil {
+			millis := int64(*e.Timestamp)
+			timestamp = &millis
+		}
 		result = append(result, auditEvent{
 			Service:                  e.Service,
 			Audit:                    e.Audit,
 			AuditType:                e.AuditType,
-			Timestamp:                int64(e.GetTimestamp()),
+			Timestamp:                timestamp,
 			UserID:                   e.UserId,
 			Entity:                   e.Entity,
 			EntityID:                 e.EntityId,
