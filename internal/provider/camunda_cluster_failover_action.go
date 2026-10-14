@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -32,6 +34,7 @@ func NewCamundaClusterFailoverAction() action.Action {
 						MarkdownDescription: "IDs of the backups to clone into the failover cluster.",
 						Required:            true,
 						ElementType:         types.StringType,
+						Validators:          []validator.List{listvalidator.SizeAtLeast(1)},
 					},
 					"restore_backup_id": schema.StringAttribute{
 						MarkdownDescription: "ID of the backup to restore onto the new cluster immediately. Must be one of `backup_ids`.",

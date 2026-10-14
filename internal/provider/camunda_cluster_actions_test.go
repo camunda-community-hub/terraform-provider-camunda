@@ -11,7 +11,12 @@ import (
 
 	console "github.com/camunda-community-hub/console-customer-api-go"
 	"github.com/hashicorp/terraform-plugin-framework/action"
+	actionschema "github.com/hashicorp/terraform-plugin-framework/action/schema"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
@@ -187,5 +192,31 @@ func TestClusterFailoverActionReportsFailedStages(t *testing.T) {
 				t.Fatalf("errors = %v, want one naming the new cluster and the failed stage", errs)
 			}
 		})
+	}
+}
+
+func TestClusterFailoverActionRejectsNoBackups(t *testing.T) {
+	ctx := context.Background()
+	a := NewCamundaClusterFailoverAction()
+	schemaResp := &action.SchemaResponse{}
+	a.Schema(ctx, action.SchemaRequest{}, schemaResp)
+
+	list, ok := schemaResp.Schema.Attributes["backup_ids"].(actionschema.ListAttribute)
+	if !ok {
+		t.Fatalf("backup_ids is %T, want a list attribute", schemaResp.Schema.Attributes["backup_ids"])
+	}
+
+	for name, backups := range map[string][]attr.Value{
+		"none": {},
+		"one":  {types.StringValue("b1")},
+	} {
+		req := validator.ListRequest{Path: path.Root("backup_ids"), ConfigValue: types.ListValueMust(types.StringType, backups)}
+		resp := &validator.ListResponse{}
+		for _, v := range list.ListValidators() {
+			v.ValidateList(ctx, req, resp)
+		}
+		if got, want := resp.Diagnostics.HasError(), name == "none"; got != want {
+			t.Errorf("%s backups: rejected = %v, want %v", name, got, want)
+		}
 	}
 }
