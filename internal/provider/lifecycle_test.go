@@ -172,7 +172,11 @@ func (p *widgetProvider) Resources(context.Context) []func() frameworkresource.R
 	}
 }
 
-func (p *widgetProvider) DataSources(context.Context) []func() datasource.DataSource { return nil }
+func (p *widgetProvider) DataSources(context.Context) []func() datasource.DataSource {
+	return []func() datasource.DataSource{
+		func() datasource.DataSource { return widgetDataSource(p.store) },
+	}
+}
 
 func widgetProviders(store *widgetStore) map[string]func() (tfprotov6.ProviderServer, error) {
 	return map[string]func() (tfprotov6.ProviderServer, error){
