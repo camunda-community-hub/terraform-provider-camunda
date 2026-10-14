@@ -4,8 +4,7 @@ variable "camunda_cluster_plan_type" {
 }
 
 variable "camunda_region" {
-  description = "The Camunda SaaS region in which to create the cluster"
-  default     = "Belgium, Europe (europe-west1)"
+  description = "The Camunda SaaS region in which to create the cluster. Secure connectivity uses AWS PrivateLink, so it must be an AWS region, and there is no default."
   type        = string
 }
 
