@@ -33,6 +33,7 @@ resource "camunda_cluster_secure_connectivity" "test" {
 
 - `conditions` (Attributes List) Status conditions of the endpoint, as reported by the Console. (see [below for nested schema](#nestedatt--conditions))
 - `connection_count` (Number) Number of connections to the endpoint.
+- `endpoint_connections` (Attributes List) The endpoints in customer accounts that are connected to the endpoint service. (see [below for nested schema](#nestedatt--endpoint_connections))
 - `endpoint_region` (String) Region of the endpoint.
 - `endpoint_type` (String) Type of the endpoint.
 - `id` (String) ID, which is the cluster ID
@@ -44,10 +45,23 @@ resource "camunda_cluster_secure_connectivity" "test" {
 
 Read-Only:
 
+- `last_transition_time` (String) When the condition last changed, as an RFC 3339 timestamp.
 - `message` (String) Human-readable message about the condition.
 - `reason` (String) Machine-readable reason for the condition's status.
 - `status` (String) Status of the condition.
 - `type` (String) Type of the condition.
+
+
+<a id="nestedatt--endpoint_connections"></a>
+### Nested Schema for `endpoint_connections`
+
+Read-Only:
+
+- `creation_timestamp` (String) When the connection was created.
+- `endpoint_id` (String) ID of the connected endpoint.
+- `owner` (String) Owner of the connected endpoint, typically an AWS account ID.
+- `service_id` (String) ID of the endpoint service.
+- `state` (String) State of the connection, such as `pendingAcceptance` or `available`.
 
 ## Import
 

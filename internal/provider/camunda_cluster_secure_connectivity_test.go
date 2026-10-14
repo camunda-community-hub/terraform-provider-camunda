@@ -56,6 +56,10 @@ func TestClusterSecureConnectivityResource(t *testing.T) {
 					resource.TestCheckResourceAttr("camunda_cluster_secure_connectivity.test", "private_dns_name", "sc.internal"),
 					resource.TestCheckResourceAttr("camunda_cluster_secure_connectivity.test", "connection_count", "3"),
 					resource.TestCheckResourceAttr("camunda_cluster_secure_connectivity.test", "conditions.0.type", "Ready"),
+					resource.TestCheckResourceAttr("camunda_cluster_secure_connectivity.test", "conditions.0.last_transition_time", "2026-01-01T00:00:00Z"),
+					resource.TestCheckResourceAttr("camunda_cluster_secure_connectivity.test", "endpoint_connections.#", "1"),
+					resource.TestCheckResourceAttr("camunda_cluster_secure_connectivity.test", "endpoint_connections.0.state", "available"),
+					resource.TestCheckResourceAttr("camunda_cluster_secure_connectivity.test", "endpoint_connections.0.owner", "123456789012"),
 				),
 			},
 			{

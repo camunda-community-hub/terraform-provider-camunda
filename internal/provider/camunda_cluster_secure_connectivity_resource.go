@@ -24,14 +24,24 @@ type camundaClusterSecureConnectivityData struct {
 	EndpointRegion    types.String `tfsdk:"endpoint_region"`
 	EndpointType      types.String `tfsdk:"endpoint_type"`
 	ConnectionCount   types.Int64  `tfsdk:"connection_count"`
+	Connections       types.List   `tfsdk:"endpoint_connections"`
 	Conditions        types.List   `tfsdk:"conditions"`
 }
 
 var secureConnectivityConditionType = types.ObjectType{AttrTypes: map[string]attr.Type{
-	"type":    types.StringType,
-	"status":  types.StringType,
-	"reason":  types.StringType,
-	"message": types.StringType,
+	"type":                 types.StringType,
+	"status":               types.StringType,
+	"reason":               types.StringType,
+	"message":              types.StringType,
+	"last_transition_time": types.StringType,
+}}
+
+var secureConnectivityConnectionType = types.ObjectType{AttrTypes: map[string]attr.Type{
+	"state":              types.StringType,
+	"service_id":         types.StringType,
+	"owner":              types.StringType,
+	"endpoint_id":        types.StringType,
+	"creation_timestamp": types.StringType,
 }}
 
 func NewCamundaClusterSecureConnectivityResource() resource.Resource {
@@ -66,6 +76,7 @@ func NewCamundaClusterSecureConnectivityResource() resource.Resource {
 			plan.EndpointType = types.StringNull()
 			plan.ConnectionCount = types.Int64Null()
 			plan.Conditions = types.ListNull(secureConnectivityConditionType)
+			plan.Connections = types.ListNull(secureConnectivityConnectionType)
 			return plan, nil
 		},
 		// The Console creates the private endpoint in the background.
@@ -82,6 +93,7 @@ func NewCamundaClusterSecureConnectivityResource() resource.Resource {
 				AllowedPrincipals: types.SetNull(types.StringType),
 				AllowedRegions:    types.SetNull(types.StringType),
 				Conditions:        types.ListNull(secureConnectivityConditionType),
+				Connections:       types.ListNull(secureConnectivityConnectionType),
 			}, nil
 		},
 	}
@@ -116,13 +128,26 @@ func readClusterSecureConnectivity(op *op, prior camundaClusterSecureConnectivit
 	conditions := make([]attr.Value, 0, len(found.Conditions))
 	for _, c := range found.Conditions {
 		conditions = append(conditions, types.ObjectValueMust(secureConnectivityConditionType.AttrTypes, map[string]attr.Value{
-			"type":    types.StringValue(c.Type),
-			"status":  types.StringValue(c.Status),
-			"reason":  types.StringValue(c.Reason),
-			"message": types.StringValue(c.Message),
+			"type":                 types.StringValue(c.Type),
+			"status":               types.StringValue(c.Status),
+			"reason":               types.StringValue(c.Reason),
+			"message":              types.StringValue(c.Message),
+			"last_transition_time": types.StringValue(c.LastTransitionTime),
 		}))
 	}
 	prior.Conditions = types.ListValueMust(secureConnectivityConditionType, conditions)
+
+	connections := make([]attr.Value, 0, len(found.Connections))
+	for _, c := range found.Connections {
+		connections = append(connections, types.ObjectValueMust(secureConnectivityConnectionType.AttrTypes, map[string]attr.Value{
+			"state":              types.StringValue(c.State),
+			"service_id":         types.StringValue(c.ServiceID),
+			"owner":              types.StringValue(c.Owner),
+			"endpoint_id":        types.StringValue(c.EndpointID),
+			"creation_timestamp": types.StringValue(c.CreationTimestamp),
+		}))
+	}
+	prior.Connections = types.ListValueMust(secureConnectivityConnectionType, connections)
 	return prior, nil
 }
 
@@ -176,15 +201,29 @@ func clusterSecureConnectivitySchema() schema.Schema {
 				Computed:            true,
 				MarkdownDescription: "Number of connections to the endpoint.",
 			},
+			"endpoint_connections": schema.ListNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "The endpoints in customer accounts that are connected to the endpoint service.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"state":              computed("State of the connection, such as `pendingAcceptance` or `available`."),
+						"service_id":         computed("ID of the endpoint service."),
+						"owner":              computed("Owner of the connected endpoint, typically an AWS account ID."),
+						"endpoint_id":        computed("ID of the connected endpoint."),
+						"creation_timestamp": computed("When the connection was created."),
+					},
+				},
+			},
 			"conditions": schema.ListNestedAttribute{
 				Computed:            true,
 				MarkdownDescription: "Status conditions of the endpoint, as reported by the Console.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"type":    computed("Type of the condition."),
-						"status":  computed("Status of the condition."),
-						"reason":  computed("Machine-readable reason for the condition's status."),
-						"message": computed("Human-readable message about the condition."),
+						"type":                 computed("Type of the condition."),
+						"status":               computed("Status of the condition."),
+						"reason":               computed("Machine-readable reason for the condition's status."),
+						"message":              computed("Human-readable message about the condition."),
+						"last_transition_time": computed("When the condition last changed, as an RFC 3339 timestamp."),
 					},
 				},
 			},

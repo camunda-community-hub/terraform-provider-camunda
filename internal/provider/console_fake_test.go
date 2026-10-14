@@ -681,6 +681,10 @@ func (s *consoleState) getSecureConnectivity(w http.ResponseWriter, r *http.Requ
 				"type": "Ready", "status": "True", "reason": "EndpointReady", "message": "ready",
 				"lastTransitionTime": "2026-01-01T00:00:00Z", "observedGeneration": 1,
 			}},
+			"endpointConnections": []map[string]any{{
+				"state": "available", "serviceId": "vpce-svc-1", "owner": "123456789012",
+				"endpointId": "vpce-1", "creationTimestamp": "2026-01-02T00:00:00Z",
+			}},
 			"endpoint": map[string]any{
 				"privateDnsName": "sc.internal", "region": "eu-west-1", "serviceName": "com.amazonaws.vpce.sc", "type": "Interface",
 			},

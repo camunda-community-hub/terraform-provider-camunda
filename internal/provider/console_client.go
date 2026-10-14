@@ -968,10 +968,20 @@ func (c *consoleClient) GetSecureConnectivity(ctx context.Context, clusterID str
 	}
 	for _, condition := range dto.Status.Conditions {
 		result.Conditions = append(result.Conditions, secureConnectivityCondition{
-			Type:    condition.Type,
-			Status:  condition.Status,
-			Reason:  condition.Reason,
-			Message: condition.Message,
+			Type:               condition.Type,
+			Status:             condition.Status,
+			Reason:             condition.Reason,
+			Message:            condition.Message,
+			LastTransitionTime: condition.LastTransitionTime,
+		})
+	}
+	for _, connection := range dto.Status.EndpointConnections {
+		result.Connections = append(result.Connections, secureConnectivityConnection{
+			State:             connection.State,
+			ServiceID:         connection.ServiceId,
+			Owner:             connection.Owner,
+			EndpointID:        connection.EndpointId,
+			CreationTimestamp: connection.CreationTimestamp,
 		})
 	}
 	return result, nil

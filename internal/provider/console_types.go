@@ -174,13 +174,26 @@ type secureConnectivity struct {
 	EndpointRegion  string
 	EndpointType    string
 	ConnectionCount int64
-	Conditions      []secureConnectivityCondition
+	// Connections are the endpoints connected to the endpoint service.
+	Connections []secureConnectivityConnection
+	Conditions  []secureConnectivityCondition
+}
+
+// secureConnectivityConnection is an endpoint connected to the endpoint
+// service.
+type secureConnectivityConnection struct {
+	State             string
+	ServiceID         string
+	Owner             string
+	EndpointID        string
+	CreationTimestamp string
 }
 
 // secureConnectivityCondition is one status condition of the endpoint.
 type secureConnectivityCondition struct {
-	Type    string
-	Status  string
-	Reason  string
-	Message string
+	Type               string
+	Status             string
+	Reason             string
+	Message            string
+	LastTransitionTime string
 }
