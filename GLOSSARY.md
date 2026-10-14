@@ -8,7 +8,7 @@
 
 **Console client**: `consoleClient` in `internal/provider/console_client.go`, the only module that talks to the Camunda Administration API and the only one that knows the generated API types. It returns the provider's own types from `console_types.go`, reports missing objects as `errNotFound`, and applies the API's rules, such as refusing to change the organization owner (`errOwnerUnchangeable`).
 
-**Cluster child**: a resource that belongs to one cluster, such as a connector secret or a backup. It has a `cluster_id` attribute that forces replacement, is imported as `<cluster_id>/<child id>` (see `splitImportID`), and calls `WaitClusterHealthy` before changing anything, because the Console rejects changes to a cluster that is creating, updating or suspended.
+**Cluster child**: a resource that belongs to one cluster, such as a connector secret or a backup. It has a `cluster_id` attribute that forces replacement and is imported as `<cluster_id>/<child id>` (see `splitImportID`). Children that act on the running cluster, such as backups, secure connectivity and monitoring, call `WaitClusterHealthy` before creating or changing anything, because the Console rejects some operations while a cluster is creating, updating or suspended. The older children (`camunda_cluster_client`, `camunda_cluster_connector_secret`, `camunda_cluster_ip_whitelist`) don't wait themselves; they depend on the cluster resource, which only finishes creating once the cluster is healthy.
 
 **Singleton child**: a cluster child that exists at most once per cluster, such as the IP allowlist, secure connectivity or the backup schedule. Its `id` is the cluster ID, so it is imported as `<cluster_id>`; create activates or sets it and delete deactivates or clears it.
 
