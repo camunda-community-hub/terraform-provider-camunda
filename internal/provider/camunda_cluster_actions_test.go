@@ -273,3 +273,21 @@ func TestClusterFailoverActionRejectsRestoreOutsideBackups(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterRestoreActionReportsSupersededRestore(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	state.do(func(s *consoleState) {
+		s.clusters["c1"] = &console.Cluster{Uuid: "c1"}
+		// Another restore of the same backup replaces the record the action watches.
+		s.supersedeRestores = true
+	})
+
+	_, errs := invokeAction(t, NewCamundaClusterRestoreAction(), f.client(t), map[string]tftypes.Value{
+		"cluster_id": stringValue("c1"),
+		"backup_id":  stringValue("backup-1"),
+	})
+	if len(errs) != 1 || !strings.Contains(strings.ReplaceAll(errs[0], "\n", " "), "superseded by restore someone-elses") {
+		t.Fatalf("errors = %v, want the superseding restore", errs)
+	}
+}

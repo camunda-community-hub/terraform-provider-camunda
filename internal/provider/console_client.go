@@ -1353,9 +1353,11 @@ func (c *consoleClient) RestoreBackup(ctx context.Context, clusterID, backupID s
 	return &restore{ID: started.Uuid, BackupID: started.BackupId, State: string(started.State)}, nil
 }
 
-// WaitRestoreComplete blocks until the latest restore of the backup has
-// completed. A failed or aborted restore ends the wait with an error.
-func (c *consoleClient) WaitRestoreComplete(ctx context.Context, clusterID, backupID string) error {
+// WaitRestoreComplete blocks until the restore that RestoreBackup started has
+// completed. A failed or aborted restore ends the wait with an error, and so
+// does a newer restore of the same backup that supersedes it, because the
+// Console only reports the latest one.
+func (c *consoleClient) WaitRestoreComplete(ctx context.Context, clusterID, backupID, restoreID string) error {
 	return c.awaitStatus(ctx, statusWait{
 		pending: []string{
 			string(console.RESTORESTATE_PENDING),
@@ -1367,6 +1369,9 @@ func (c *consoleClient) WaitRestoreComplete(ctx context.Context, clusterID, back
 			latest, response, err := c.api.GetRestore(ctx, clusterID, backupID).Execute()
 			if err != nil {
 				return "", apiError(err, response)
+			}
+			if latest.Uuid != restoreID {
+				return "", fmt.Errorf("restore %s was superseded by restore %s of the same backup", restoreID, latest.Uuid)
 			}
 			return string(latest.State), nil
 		},

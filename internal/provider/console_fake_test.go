@@ -170,8 +170,12 @@ type consoleState struct {
 	// clusterID -> cron expression
 	schedules map[string]string
 	// backupID -> restore state; absent when never restored
-	restores     map[string]console.RestoreState
+	restores map[string]console.RestoreState
+	// backupID -> UUID of its latest restore
+	restoreIDs   map[string]string
 	failRestores bool
+	// supersedeRestores makes another restore of the same backup replace the one a caller started.
+	supersedeRestores bool
 	// clusterID -> failover request received
 	failovers map[string]console.TriggerFailoverBody
 	// clusterID -> polls left before BYOK encryption is ready
@@ -206,6 +210,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		backupPolls:         map[string]int{},
 		schedules:           map[string]string{},
 		restores:            map[string]console.RestoreState{},
+		restoreIDs:          map[string]string{},
 		failovers:           map[string]console.TriggerFailoverBody{},
 		encryptionPolls:     map[string]int{},
 		monitoringPolls:     map[string]int{},
@@ -969,7 +974,8 @@ func (s *consoleState) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.restores[backupID] = console.RESTORESTATE_PENDING
-	writeJSON(s.t, w, console.RestoreDto{Uuid: s.newID("restore"), BackupId: backupID, State: console.RESTORESTATE_PENDING})
+	s.restoreIDs[backupID] = s.newID("restore")
+	writeJSON(s.t, w, console.RestoreDto{Uuid: s.restoreIDs[backupID], BackupId: backupID, State: console.RESTORESTATE_PENDING})
 }
 
 func (s *consoleState) getRestore(w http.ResponseWriter, r *http.Request) {
@@ -991,7 +997,11 @@ func (s *consoleState) getRestore(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.restores[backupID] = state
-	writeJSON(s.t, w, console.RestoreDto{Uuid: "restore", BackupId: backupID, State: state})
+	id := s.restoreIDs[backupID]
+	if s.supersedeRestores {
+		id = "someone-elses"
+	}
+	writeJSON(s.t, w, console.RestoreDto{Uuid: id, BackupId: backupID, State: state})
 }
 
 func (s *consoleState) triggerFailover(w http.ResponseWriter, r *http.Request) {

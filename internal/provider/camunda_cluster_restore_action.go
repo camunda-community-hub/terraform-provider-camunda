@@ -34,12 +34,13 @@ func NewCamundaClusterRestoreAction() action.Action {
 		invoke: func(op *op, config clusterRestoreActionData, progress func(string)) error {
 			clusterID, backupID := config.ClusterID.ValueString(), config.BackupID.ValueString()
 
-			if _, err := op.client.RestoreBackup(op.ctx, clusterID, backupID); err != nil {
+			started, err := op.client.RestoreBackup(op.ctx, clusterID, backupID)
+			if err != nil {
 				return fmt.Errorf("backup %s in cluster %s: %w", backupID, clusterID, err)
 			}
 			progress(fmt.Sprintf("Restoring backup %s onto cluster %s", backupID, clusterID))
 
-			if err := op.client.WaitRestoreComplete(op.ctx, clusterID, backupID); err != nil {
+			if err := op.client.WaitRestoreComplete(op.ctx, clusterID, backupID, started.ID); err != nil {
 				return fmt.Errorf("restoring backup %s in cluster %s never completed: %w", backupID, clusterID, err)
 			}
 			progress(fmt.Sprintf("Restored backup %s onto cluster %s", backupID, clusterID))
