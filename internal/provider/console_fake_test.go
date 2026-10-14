@@ -171,6 +171,8 @@ type consoleState struct {
 	schedules map[string]string
 	// clusterID -> polls left before BYOK encryption is ready
 	encryptionPolls map[string]int
+	// slowEncryption keeps newly supplied keys from ever becoming ready.
+	slowEncryption bool
 	// clusterID -> polls left before external monitoring is active; absent when it is not activated
 	monitoringPolls map[string]int
 	// slowMonitoring keeps new external monitoring provisioning for good.
@@ -908,6 +910,9 @@ func (s *consoleState) updateClusterEncryption(w http.ResponseWriter, r *http.Re
 	notReady := console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_READY
 	cluster.Encryption.Status = &notReady
 	s.encryptionPolls[cluster.Uuid] = 2
+	if s.slowEncryption {
+		s.encryptionPolls[cluster.Uuid] = 1 << 20
+	}
 	writeJSON(s.t, w, cluster)
 }
 

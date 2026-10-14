@@ -35,8 +35,23 @@ func NewCamundaClusterEncryptionResource() resource.Resource {
 			if err := op.client.WaitClusterHealthy(op.ctx, clusterID); err != nil {
 				return plan, err
 			}
-			if err := op.client.SetClusterEncryptionKeys(op.ctx, clusterID, plan.PrimaryKeyID.ValueString(), plan.SecondaryKeyID.ValueString()); err != nil {
+
+			// The Console takes the keys once. They are already there after an
+			// earlier attempt whose wait or read failed and was replaced, so
+			// resume waiting when they are the planned ones instead of sending
+			// them again, which it would reject; other keys can't be changed.
+			existing, err := op.client.GetClusterEncryption(op.ctx, clusterID)
+			if err != nil {
 				return plan, err
+			}
+			switch {
+			case existing.PrimaryKeyARN == "":
+				if err := op.client.SetClusterEncryptionKeys(op.ctx, clusterID, plan.PrimaryKeyID.ValueString(), plan.SecondaryKeyID.ValueString()); err != nil {
+					return plan, err
+				}
+			case existing.PrimaryKeyARN != plan.PrimaryKeyID.ValueString() || existing.SecondaryKeyARN != plan.SecondaryKeyID.ValueString():
+				return plan, fmt.Errorf("the cluster already has other keys applied (primary %q, secondary %q), and the Console doesn't allow changing them; to use other keys, create a new cluster",
+					existing.PrimaryKeyARN, existing.SecondaryKeyARN)
 			}
 
 			// The plan is saved before waiting for the encryption, so nothing

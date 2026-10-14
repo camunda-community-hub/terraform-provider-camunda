@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	console "github.com/camunda-community-hub/console-customer-api-go"
 	"regexp"
 	"slices"
 	"strings"
@@ -396,6 +397,68 @@ resource "camunda_cluster_encryption" "other" {
 				// A cluster that doesn't exist yet: its id is unknown at plan time.
 				Config: config([]string{"first", "second", "third"}, "third", fakeKeyOne),
 				Check:  expectKeys(fakeKeyOne, fakeKeyOne, fakeKeyTwo),
+			},
+		},
+	})
+}
+
+func TestClusterEncryptionResourceResumesAfterAFailedWait(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	state.do(func(s *consoleState) { s.slowEncryption = true })
+	config := encryptionConfig(f, "External", fakeKeyOne)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				// The keys are applied, but the encryption isn't ready when the wait gives up.
+				Config:      config,
+				ExpectError: regexp.MustCompile(`never became ready`),
+			},
+			{
+				// Reapplying replaces the tainted resource. Destroying it leaves
+				// the keys on the cluster, so sending them again would be
+				// rejected: it resumes waiting instead.
+				PreConfig: func() {
+					state.do(func(s *consoleState) {
+						s.slowEncryption = false
+						for id := range s.encryptionPolls {
+							s.encryptionPolls[id] = 0
+						}
+					})
+				},
+				Config: config,
+				Check:  resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "status", "Ready"),
+			},
+		},
+	})
+}
+
+func TestClusterEncryptionResourceRejectsOtherKeysAlreadyApplied(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: byokClusterConfig(f, "External", false),
+			},
+			{
+				// Another key was applied outside Terraform.
+				PreConfig: func() {
+					state.do(func(s *consoleState) {
+						for _, cluster := range s.clusters {
+							if cluster.Encryption != nil && cluster.Encryption.Type == console.CLUSTERENCRYPTIONKEY_EXTERNAL {
+								key := fakeKeyTwo
+								cluster.Encryption.PrimaryKeyArn = &key
+							}
+						}
+					})
+				},
+				Config:      encryptionConfig(f, "External", fakeKeyOne),
+				ExpectError: regexp.MustCompile(`(?s)already\s+has\s+other\s+keys\s+applied`),
 			},
 		},
 	})
