@@ -182,19 +182,17 @@ func (c *consoleClient) DeleteCluster(ctx context.Context, clusterID string) err
 
 // WaitClusterHealthy blocks until the cluster reports healthy twice in a row.
 func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string) error {
-	wait := &retry.StateChangeConf{
-		Pending: []string{
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{
 			string(console.CLUSTERCOMPONENTSTATUS_CREATING),
 			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
 		},
-		Target: []string{
-			string(console.CLUSTERCOMPONENTSTATUS_HEALTHY),
-		},
-		ContinuousTargetOccurence: 2,
-		Refresh: func() (interface{}, string, error) {
+		target:      []string{string(console.CLUSTERCOMPONENTSTATUS_HEALTHY)},
+		consecutive: 2,
+		refresh: func() (string, error) {
 			cluster, err := c.getAPICluster(ctx, clusterID)
 			if err != nil {
-				return nil, "", err
+				return "", err
 			}
 
 			tflog.Info(ctx, "Camunda cluster status", map[string]interface{}{
@@ -202,7 +200,39 @@ func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string
 				"clusterStatus": cluster.Status.Ready,
 			})
 
-			return cluster, string(cluster.Status.Ready), nil
+			return string(cluster.Status.Ready), nil
+		},
+	})
+}
+
+// statusWait describes how to wait for an asynchronous Console operation, such
+// as a backup or an activation, to settle.
+type statusWait struct {
+	// pending are the statuses that mean keep waiting. Any status that is
+	// neither pending nor a target, such as "Failed", ends the wait with an
+	// error naming it.
+	pending []string
+	target  []string
+	// consecutive is how often in a row a target status must be seen; 0 means 1.
+	consecutive int
+	// refresh returns the current status. An error ends the wait, so it must
+	// wrap errNotFound when the object disappears.
+	refresh func() (string, error)
+}
+
+// awaitStatus polls w.refresh until a target status shows up, using the
+// client's cluster wait timeout, delay and poll interval.
+func (c *consoleClient) awaitStatus(ctx context.Context, w statusWait) error {
+	wait := &retry.StateChangeConf{
+		Pending:                   w.pending,
+		Target:                    w.target,
+		ContinuousTargetOccurence: max(w.consecutive, 1),
+		Refresh: func() (interface{}, string, error) {
+			status, err := w.refresh()
+			if err != nil {
+				return nil, "", err
+			}
+			return status, status, nil
 		},
 		Timeout:    c.clusterWaitTimeout,
 		Delay:      c.clusterWaitDelay,

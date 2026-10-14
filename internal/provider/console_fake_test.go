@@ -203,6 +203,16 @@ func (s *consoleState) decode(w http.ResponseWriter, r *http.Request, v any) boo
 	return true
 }
 
+// cluster returns the cluster, or answers 404 and reports false. Handlers for
+// cluster-scoped endpoints start with it.
+func (s *consoleState) cluster(w http.ResponseWriter, id string) (*console.Cluster, bool) {
+	cluster, ok := s.clusters[id]
+	if !ok {
+		notFound(w, "cluster")
+	}
+	return cluster, ok
+}
+
 func notFound(w http.ResponseWriter, what string) {
 	http.Error(w, fmt.Sprintf(`{"message":"%s not found"}`, what), http.StatusNotFound)
 }
@@ -252,9 +262,8 @@ func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
 
 func (s *consoleState) getCluster(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	cluster, ok := s.clusters[id]
+	cluster, ok := s.cluster(w, id)
 	if !ok {
-		notFound(w, "cluster")
 		return
 	}
 
@@ -267,9 +276,8 @@ func (s *consoleState) getCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *consoleState) updateCluster(w http.ResponseWriter, r *http.Request) {
-	cluster, ok := s.clusters[r.PathValue("id")]
+	cluster, ok := s.cluster(w, r.PathValue("id"))
 	if !ok {
-		notFound(w, "cluster")
 		return
 	}
 
@@ -288,8 +296,7 @@ func (s *consoleState) updateCluster(w http.ResponseWriter, r *http.Request) {
 
 func (s *consoleState) deleteCluster(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if _, ok := s.clusters[id]; !ok {
-		notFound(w, "cluster")
+	if _, ok := s.cluster(w, id); !ok {
 		return
 	}
 	delete(s.clusters, id)
@@ -299,9 +306,8 @@ func (s *consoleState) deleteCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *consoleState) updateIPAllowlist(w http.ResponseWriter, r *http.Request) {
-	cluster, ok := s.clusters[r.PathValue("id")]
+	cluster, ok := s.cluster(w, r.PathValue("id"))
 	if !ok {
-		notFound(w, "cluster")
 		return
 	}
 
@@ -315,8 +321,7 @@ func (s *consoleState) updateIPAllowlist(w http.ResponseWriter, r *http.Request)
 
 func (s *consoleState) createClient(w http.ResponseWriter, r *http.Request) {
 	clusterID := r.PathValue("id")
-	if _, ok := s.clusters[clusterID]; !ok {
-		notFound(w, "cluster")
+	if _, ok := s.cluster(w, clusterID); !ok {
 		return
 	}
 
@@ -341,8 +346,7 @@ func (s *consoleState) createClient(w http.ResponseWriter, r *http.Request) {
 
 func (s *consoleState) listClients(w http.ResponseWriter, r *http.Request) {
 	clusterID := r.PathValue("id")
-	if _, ok := s.clusters[clusterID]; !ok {
-		notFound(w, "cluster")
+	if _, ok := s.cluster(w, clusterID); !ok {
 		return
 	}
 
@@ -384,8 +388,7 @@ func (s *consoleState) deleteClient(w http.ResponseWriter, r *http.Request) {
 
 func (s *consoleState) createSecret(w http.ResponseWriter, r *http.Request) {
 	clusterID := r.PathValue("id")
-	if _, ok := s.clusters[clusterID]; !ok {
-		notFound(w, "cluster")
+	if _, ok := s.cluster(w, clusterID); !ok {
 		return
 	}
 
@@ -402,8 +405,7 @@ func (s *consoleState) createSecret(w http.ResponseWriter, r *http.Request) {
 
 func (s *consoleState) getSecrets(w http.ResponseWriter, r *http.Request) {
 	clusterID := r.PathValue("id")
-	if _, ok := s.clusters[clusterID]; !ok {
-		notFound(w, "cluster")
+	if _, ok := s.cluster(w, clusterID); !ok {
 		return
 	}
 
