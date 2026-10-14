@@ -3,19 +3,20 @@ package provider
 import (
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type clusterClientDataSourceData struct {
-	Id                          types.String   `tfsdk:"id"`
-	ClusterId                   types.String   `tfsdk:"cluster_id"`
-	Name                        types.String   `tfsdk:"name"`
-	Scopes                      []types.String `tfsdk:"scopes"`
-	ZeebeAddress                types.String   `tfsdk:"zeebe_address"`
-	ZeebeClientId               types.String   `tfsdk:"zeebe_client_id"`
-	ZeebeAuthorizationServerUrl types.String   `tfsdk:"zeebe_authorization_server_url"`
+	Id                          types.String `tfsdk:"id"`
+	ClusterId                   types.String `tfsdk:"cluster_id"`
+	Name                        types.String `tfsdk:"name"`
+	Scopes                      types.Set    `tfsdk:"scopes"`
+	ZeebeAddress                types.String `tfsdk:"zeebe_address"`
+	ZeebeClientId               types.String `tfsdk:"zeebe_client_id"`
+	ZeebeAuthorizationServerUrl types.String `tfsdk:"zeebe_authorization_server_url"`
 }
 
 type clusterClientsDataSourceData struct {
@@ -28,7 +29,7 @@ func newClusterClientDataSourceData(clusterID string, c clusterClient) clusterCl
 		Id:                          types.StringValue(clusterID + "/" + c.ClientID),
 		ClusterId:                   types.StringValue(clusterID),
 		Name:                        types.StringValue(c.Name),
-		Scopes:                      stringValues(c.Scopes),
+		Scopes:                      stringSetValue(c.Scopes),
 		ZeebeAddress:                types.StringValue(c.ZeebeAddress),
 		ZeebeClientId:               types.StringValue(c.ClientID),
 		ZeebeAuthorizationServerUrl: types.StringValue(c.AuthorizationServerURL),
@@ -128,7 +129,7 @@ func clusterClientComputedAttributes() map[string]schema.Attribute {
 			Computed:            true,
 			MarkdownDescription: "The name of the client",
 		},
-		"scopes": schema.ListAttribute{
+		"scopes": schema.SetAttribute{
 			Computed:            true,
 			ElementType:         types.StringType,
 			MarkdownDescription: "The scopes the client has",
@@ -142,4 +143,13 @@ func clusterClientComputedAttributes() map[string]schema.Attribute {
 			MarkdownDescription: "Zeebe Authorization Server URL",
 		},
 	}
+}
+
+// stringSetValue is a Terraform set of the strings, never null.
+func stringSetValue(values []string) types.Set {
+	elements := make([]attr.Value, 0, len(values))
+	for _, value := range values {
+		elements = append(elements, types.StringValue(value))
+	}
+	return types.SetValueMust(types.StringType, elements)
 }
