@@ -1,6 +1,5 @@
 variable "camunda_cluster_plan_type" {
-  description = "The Camunda SaaS cluster plan type to use"
-  default     = "Trial Cluster"
+  description = "The Camunda SaaS cluster plan type to use. Secure connectivity is an Enterprise feature, so there is no default."
   type        = string
 }
 
