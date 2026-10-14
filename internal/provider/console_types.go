@@ -197,3 +197,29 @@ type secureConnectivityCondition struct {
 	Message            string
 	LastTransitionTime string
 }
+
+// monitoring is where a cluster exposes its metrics once external monitoring
+// is activated.
+type monitoring struct {
+	Target string
+	Scheme string
+	Path   string
+}
+
+// monitoringClient is a client that may scrape a cluster's metrics. Its
+// password is only returned by createdMonitoringClient.
+type monitoringClient struct {
+	ID            string
+	Name          string
+	Username      string
+	Created       time.Time
+	CreatedBy     string
+	CreatedByName string
+}
+
+// createdMonitoringClient is what creating a monitoring client or rotating its
+// password returns.
+type createdMonitoringClient struct {
+	monitoringClient
+	Password string
+}

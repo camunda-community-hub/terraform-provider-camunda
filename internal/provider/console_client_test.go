@@ -737,3 +737,19 @@ func TestConsoleClientWaitSecureConnectivityActiveStopsWhenTheClusterIsGone(t *t
 		t.Fatalf("took %v, want it to give up at once instead of waiting for the timeout", elapsed)
 	}
 }
+
+func TestConsoleClientReadsMonitoringClientsWithoutActiveMonitoring(t *testing.T) {
+	f := newFakeConsole(t)
+	f.mux.HandleFunc("GET /clusters/{id}/monitoring/clients", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"status":{},"clients":[{"uuid":"c1","name":"scraper","username":"scraper","created":"2026-01-01T00:00:00Z","lastUsed":"2026-01-01T00:00:00Z","createdBy":"u","createdByName":"U"}]}`)
+	})
+	client := f.client(t)
+
+	clients, err := client.ListMonitoringClients(context.Background(), "cluster")
+	if err != nil || len(clients) != 1 || clients[0].ID != "c1" {
+		t.Fatalf("ListMonitoringClients = %+v, %v; want the client despite the empty status", clients, err)
+	}
+	if _, err := client.GetMonitoring(context.Background(), "cluster"); !errors.Is(err, errNotFound) {
+		t.Fatalf("GetMonitoring = %v, want errNotFound while monitoring is inactive", err)
+	}
+}

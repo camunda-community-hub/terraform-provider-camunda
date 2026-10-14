@@ -946,7 +946,7 @@ func (c *consoleClient) GetSecureConnectivity(ctx context.Context, clusterID str
 
 	found, response, err := c.api.GetSecureConnectivityStatus(ctx, clusterID).Execute()
 	if err != nil {
-		if hasEmptyStatus(err) {
+		if _, empty := emptyStatusBody(err); empty {
 			return nil, notActivated
 		}
 		return nil, apiError(err, response)
@@ -993,19 +993,23 @@ func (c *consoleClient) GetSecureConnectivity(ctx context.Context, clusterID str
 	return result, nil
 }
 
-// hasEmptyStatus reports whether err is the generated client failing to decode
-// the status the Console returns without secure connectivity, `{"status": {}}`:
-// it matches neither variant of the status the spec declares.
-func hasEmptyStatus(err error) bool {
+// emptyStatusBody returns the response body when err is the generated client
+// failing to decode the empty status the Console returns for an inactive
+// feature, `{"status": {}}`: it matches neither variant of the status the spec
+// declares.
+func emptyStatusBody(err error) ([]byte, bool) {
 	var openAPIErr *console.GenericOpenAPIError
 	if !errors.As(err, &openAPIErr) {
-		return false
+		return nil, false
 	}
 
 	var body struct {
 		Status map[string]json.RawMessage `json:"status"`
 	}
-	return json.Unmarshal(openAPIErr.Body(), &body) == nil && body.Status != nil && len(body.Status) == 0
+	if json.Unmarshal(openAPIErr.Body(), &body) != nil || body.Status == nil || len(body.Status) != 0 {
+		return nil, false
+	}
+	return openAPIErr.Body(), true
 }
 
 // WaitSecureConnectivityActive blocks until the Console has created the
@@ -1034,4 +1038,173 @@ func (c *consoleClient) WaitSecureConnectivityActive(ctx context.Context, cluste
 			return active, nil
 		},
 	})
+}
+
+// External monitoring
+
+// ActivateMonitoring starts exposing the cluster's metrics for external
+// monitoring; see WaitMonitoringActive. It fails if it is already activated.
+func (c *consoleClient) ActivateMonitoring(ctx context.Context, clusterID string) error {
+	response, err := c.api.ActivateMonitoring(ctx, clusterID).Execute()
+	return apiError(err, response)
+}
+
+// DeactivateMonitoring stops exposing the cluster's metrics, or returns
+// errNotFound when it isn't activated or the cluster does not exist.
+func (c *consoleClient) DeactivateMonitoring(ctx context.Context, clusterID string) error {
+	response, err := c.api.DeactivateMonitoring(ctx, clusterID).Execute()
+	err = apiError(err, response)
+	if err != nil && response != nil && response.StatusCode == http.StatusConflict {
+		return fmt.Errorf("%w: external monitoring of cluster %s is not activated", errNotFound, clusterID)
+	}
+	return err
+}
+
+// GetMonitoring returns where the cluster's metrics are exposed, or
+// errNotFound when external monitoring isn't activated or the cluster does not
+// exist.
+func (c *consoleClient) GetMonitoring(ctx context.Context, clusterID string) (*monitoring, error) {
+	_, found, err := c.getMonitoring(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	if found == nil {
+		return nil, fmt.Errorf("%w: external monitoring of cluster %s is not activated", errNotFound, clusterID)
+	}
+	return found, nil
+}
+
+// getMonitoring returns the monitoring clients and the monitoring status,
+// which is nil while external monitoring isn't activated.
+func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) ([]monitoringClient, *monitoring, error) {
+	found, response, err := c.api.GetMonitoringClients(ctx, clusterID).Execute()
+	if err != nil {
+		body, empty := emptyStatusBody(err)
+		if !empty {
+			return nil, nil, apiError(err, response)
+		}
+
+		// The generated client gave up on the whole body, clients included.
+		var listed struct {
+			Clients []console.ByomClientDto `json:"clients"`
+		}
+		if err := json.Unmarshal(body, &listed); err != nil {
+			return nil, nil, fmt.Errorf("unable to read monitoring clients: %w", err)
+		}
+		return newMonitoringClients(listed.Clients), nil, nil
+	}
+
+	var status *monitoring
+	if byom := found.Status.ByomStatus; byom != nil {
+		status = &monitoring{
+			Target: byom.MetricsEndpoint.Target,
+			Scheme: byom.MetricsEndpoint.Scheme,
+			Path:   byom.MetricsEndpoint.Path,
+		}
+	}
+	return newMonitoringClients(found.Clients), status, nil
+}
+
+// WaitMonitoringActive blocks until the Console reports where the cluster's
+// metrics are exposed.
+func (c *consoleClient) WaitMonitoringActive(ctx context.Context, clusterID string) error {
+	const pending, active = "Pending", "Active"
+
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{pending},
+		target:  []string{active},
+		refresh: func() (string, error) {
+			found, err := c.GetMonitoring(ctx, clusterID)
+			switch {
+			case errors.Is(err, errNotFound):
+				// Not visible yet right after activating it.
+				return pending, nil
+			case err != nil:
+				return "", err
+			case found.Target == "":
+				return pending, nil
+			}
+			return active, nil
+		},
+	})
+}
+
+// ListMonitoringClients returns the cluster's external monitoring clients, or
+// errNotFound when the cluster does not exist.
+func (c *consoleClient) ListMonitoringClients(ctx context.Context, clusterID string) ([]monitoringClient, error) {
+	clients, _, err := c.getMonitoring(ctx, clusterID)
+	return clients, err
+}
+
+// GetMonitoringClient returns the monitoring client, or errNotFound when
+// either the cluster or the client does not exist.
+func (c *consoleClient) GetMonitoringClient(ctx context.Context, clusterID, clientID string) (*monitoringClient, error) {
+	clients, err := c.ListMonitoringClients(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, listed := range clients {
+		if listed.ID == clientID {
+			return &listed, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: monitoring client %q in cluster %s", errNotFound, clientID, clusterID)
+}
+
+// CreateMonitoringClient creates a monitoring client with the username and
+// returns it with its password, which is only ever returned here and by
+// RotateMonitoringClientPassword.
+func (c *consoleClient) CreateMonitoringClient(ctx context.Context, clusterID, username string) (*createdMonitoringClient, error) {
+	created, response, err := c.api.CreateMonitoringClient(ctx, clusterID).
+		CreateMonitoringClientRequest(console.CreateMonitoringClientRequest{Username: username}).
+		Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return newCreatedMonitoringClient(created), nil
+}
+
+// RotateMonitoringClientPassword replaces the client's password and returns
+// the new one.
+func (c *consoleClient) RotateMonitoringClientPassword(ctx context.Context, clusterID, clientID string) (*createdMonitoringClient, error) {
+	rotated, response, err := c.api.RotateMonitoringClientPassword(ctx, clusterID, clientID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return newCreatedMonitoringClient(rotated), nil
+}
+
+func (c *consoleClient) DeleteMonitoringClient(ctx context.Context, clusterID, clientID string) error {
+	response, err := c.api.DeleteMonitoringClient(ctx, clusterID, clientID).Execute()
+	return apiError(err, response)
+}
+
+func newMonitoringClients(listed []console.ByomClientDto) []monitoringClient {
+	clients := make([]monitoringClient, 0, len(listed))
+	for _, l := range listed {
+		clients = append(clients, monitoringClient{
+			ID:            l.Uuid,
+			Name:          l.Name,
+			Username:      l.Username,
+			Created:       l.Created,
+			CreatedBy:     l.CreatedBy,
+			CreatedByName: l.CreatedByName,
+		})
+	}
+	return clients
+}
+
+func newCreatedMonitoringClient(created *console.CreateMonitoringClient200Response) *createdMonitoringClient {
+	return &createdMonitoringClient{
+		monitoringClient: monitoringClient{
+			ID:            created.Uuid,
+			Name:          created.Name,
+			Username:      created.Username,
+			Created:       created.Created,
+			CreatedBy:     created.CreatedBy,
+			CreatedByName: created.CreatedByName,
+		},
+		Password: created.Password,
+	}
 }

@@ -179,6 +179,8 @@ func (p *CamundaCloudProvider) Resources(ctx context.Context) []func() resource.
 		NewCamundaClusterClientResource,
 		NewCamundaClusterConnectorSecretResource,
 		NewCamundaClusterIPWhitelistResource,
+		NewCamundaClusterMonitoringClientResource,
+		NewCamundaClusterMonitoringResource,
 		NewCamundaClusterResource,
 		NewCamundaClusterSecureConnectivityResource,
 		NewCamundaOrganizationMemberResource,
