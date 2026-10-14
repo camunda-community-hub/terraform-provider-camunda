@@ -4,6 +4,8 @@
 
 **Hook**: a function a resource declares for the lifecycle module: `create`, `read`, `update`, `delete`, and optionally `awaitReady` and `importID`. Hooks take and return the resource's model, return plain errors, and report warnings through `op.Warn`.
 
+**Data source module**: `managedDataSource` in `internal/provider/data_source.go`, the read-only counterpart of the lifecycle module. A data source declares its schema, its model and one `read` hook; the module owns configure, config and state handling and the diagnostic format.
+
 **Console client**: `consoleClient` in `internal/provider/console_client.go`, the only module that talks to the Camunda Administration API and the only one that knows the generated API types. It returns the provider's own types from `console_types.go`, reports missing objects as `errNotFound`, and applies the API's rules, such as refusing to change the organization owner (`errOwnerUnchangeable`).
 
 **Cluster child**: a resource that belongs to one cluster, such as a connector secret or a backup. It has a `cluster_id` attribute that forces replacement, is imported as `<cluster_id>/<child id>` (see `splitImportID`), and calls `WaitClusterHealthy` before changing anything, because the Console rejects changes to a cluster that is creating, updating or suspended.
