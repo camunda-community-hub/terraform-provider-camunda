@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -104,6 +105,17 @@ func readClusterSecureConnectivity(op *op, prior camundaClusterSecureConnectivit
 	prior.ClusterID = prior.Id
 
 	found, err := op.client.GetSecureConnectivity(op.ctx, prior.Id.ValueString())
+	if errors.Is(err, errNotFound) && prior.ServiceName.IsNull() && !prior.AllowedPrincipals.IsNull() {
+		// Activation was started but never seen finishing, for example because
+		// Terraform was interrupted while waiting for the endpoint service.
+		// While the Console is still provisioning, it reports nothing, so don't
+		// forget the activation: the next apply would activate it again and
+		// conflict. A cluster that is gone is not worth keeping it for.
+		if _, clusterErr := op.client.GetCluster(op.ctx, prior.Id.ValueString()); clusterErr != nil {
+			return prior, clusterErr
+		}
+		return prior, nil
+	}
 	if err != nil {
 		return prior, err
 	}

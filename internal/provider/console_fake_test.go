@@ -166,8 +166,10 @@ type consoleState struct {
 	schedules map[string]string
 	// clusterID -> secure connectivity activated for the cluster
 	secureConnectivity map[string]*fakeSecureConnectivity
-	failBackups        bool
-	members            map[string]console.Member
+	// slowSecureConnectivity keeps new secure connectivity provisioning for good.
+	slowSecureConnectivity bool
+	failBackups            bool
+	members                map[string]console.Member
 }
 
 // serveConsole registers the Console API on the fake and returns its state.
@@ -650,6 +652,9 @@ func (s *consoleState) activateSecureConnectivity(w http.ResponseWriter, r *http
 		principals: req.AllowedPrincipals,
 		regions:    req.AllowedRegions,
 		pollsLeft:  2,
+	}
+	if s.slowSecureConnectivity {
+		s.secureConnectivity[clusterID].pollsLeft = 1 << 20
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
