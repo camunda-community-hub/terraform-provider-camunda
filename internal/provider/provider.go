@@ -186,6 +186,7 @@ func (p *CamundaCloudProvider) DataSources(ctx context.Context) []func() datasou
 	return []func() datasource.DataSource{
 		NewCamundaAuditLogDataSource,
 		NewCamundaChannelDataSource,
+		NewCamundaClusterBackupsDataSource,
 		NewCamundaClusterClientDataSource,
 		NewCamundaClusterClientsDataSource,
 		NewCamundaClusterConnectorSecretsDataSource,

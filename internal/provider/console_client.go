@@ -803,3 +803,36 @@ func (c *consoleClient) GetAuditLog(ctx context.Context) ([]auditEvent, error) {
 	}
 	return result, nil
 }
+
+// Backups
+
+// ListBackups returns the cluster's backups, or errNotFound when the cluster
+// does not exist.
+func (c *consoleClient) ListBackups(ctx context.Context, clusterID string) ([]backup, error) {
+	listed, response, err := c.api.GetBackups(ctx, clusterID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	backups := make([]backup, 0, len(listed))
+	for i := range listed {
+		backups = append(backups, newBackup(&listed[i]))
+	}
+	return backups, nil
+}
+
+func newBackup(b *console.BackupDto) backup {
+	return backup{
+		ID:             b.Uuid,
+		Name:           b.Name,
+		Created:        b.Created,
+		Completed:      b.Completed,
+		Status:         string(b.Status),
+		ZeebeStatus:    string(b.ZeebeStatus),
+		OperateStatus:  string(b.OperateStatus),
+		TasklistStatus: string(b.TasklistStatus),
+		OptimizeStatus: string(b.OptimizeStatus),
+		GenerationID:   b.GetGenerationUuid(),
+		GenerationName: b.GetGenerationName(),
+	}
+}

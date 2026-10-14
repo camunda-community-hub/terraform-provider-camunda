@@ -150,6 +150,8 @@ type consoleState struct {
 	clients map[string]map[string]console.CreatedClusterClient
 	// clusterID -> name -> value
 	secrets map[string]map[string]string
+	// clusterID -> backups, oldest first
+	backups map[string][]console.BackupDto
 	members map[string]console.Member
 }
 
@@ -162,6 +164,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		creating:        map[string]int{},
 		clients:         map[string]map[string]console.CreatedClusterClient{},
 		secrets:         map[string]map[string]string{},
+		backups:         map[string][]console.BackupDto{},
 		members:         map[string]console.Member{},
 	}
 
@@ -182,6 +185,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		"POST /clusters/{id}/secrets":                s.createSecret,
 		"GET /clusters/{id}/secrets":                 s.getSecrets,
 		"DELETE /clusters/{id}/secrets/{secretName}": s.deleteSecret,
+		"GET /clusters/{id}/backups":                 s.listBackups,
 		"GET /members":                               s.getMembers,
 		"POST /members/{email}":                      s.updateMember,
 		"DELETE /members/{email}":                    s.deleteMember,
@@ -368,6 +372,7 @@ func (s *consoleState) deleteCluster(w http.ResponseWriter, r *http.Request) {
 	delete(s.clusterSettings, id)
 	delete(s.clients, id)
 	delete(s.secrets, id)
+	delete(s.backups, id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -490,6 +495,18 @@ func (s *consoleState) deleteSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(s.secrets[clusterID], name)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) listBackups(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+	backups := s.backups[clusterID]
+	if backups == nil {
+		backups = []console.BackupDto{}
+	}
+	writeJSON(s.t, w, backups)
 }
 
 func (s *consoleState) getMembers(w http.ResponseWriter, r *http.Request) {
