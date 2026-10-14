@@ -772,3 +772,24 @@ func TestConsoleClientMonitoringReportsUnreadableStatus(t *testing.T) {
 		t.Fatalf("ListMonitoringClients: %v", err)
 	}
 }
+
+func TestConsoleClientWaitMonitoringActiveStopsWhenTheClusterIsGone(t *testing.T) {
+	f := newFakeConsole(t)
+	f.mux.HandleFunc("GET /clusters/{id}/monitoring/clients", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"cluster not found"}`, http.StatusNotFound)
+	})
+	f.mux.HandleFunc("GET /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"cluster not found"}`, http.StatusNotFound)
+	})
+	client := f.client(t)
+	client.clusterWaitTimeout = time.Minute
+
+	start := time.Now()
+	err := client.WaitMonitoringActive(context.Background(), "gone")
+	if !errors.Is(err, errNotFound) {
+		t.Fatalf("WaitMonitoringActive = %v, want errNotFound", err)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Fatalf("took %v, want it to give up at once instead of waiting for the timeout", elapsed)
+	}
+}

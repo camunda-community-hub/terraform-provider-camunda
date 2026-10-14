@@ -1132,7 +1132,11 @@ func (c *consoleClient) WaitMonitoringActive(ctx context.Context, clusterID stri
 			found, err := c.GetMonitoring(ctx, clusterID)
 			switch {
 			case errors.Is(err, errNotFound):
-				// Not visible yet right after activating it.
+				// Not visible yet right after activating it, unless the
+				// cluster is gone and it never will be.
+				if _, clusterErr := c.getAPICluster(ctx, clusterID); clusterErr != nil {
+					return "", clusterErr
+				}
 				return pending, nil
 			case err != nil:
 				return "", err
