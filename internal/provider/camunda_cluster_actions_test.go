@@ -170,13 +170,17 @@ func TestConsoleClientTriggerFailoverToleratesUnknownResultShapes(t *testing.T) 
 }
 
 func TestClusterFailoverActionReportsFailedStages(t *testing.T) {
+	// The first response decodes with the generated client, whose error is a
+	// string. In the second the error is an object it can't decode, so the
+	// client falls back to the raw body.
 	for name, results := range map[string]string{
-		"known shape":   `{"backupClone":"ok","restore":{"error":"restore exploded"}}`,
-		"unknown shape": `{"backupClone":{"error":"clone exploded","details":["x"]},"restore":"ok"}`,
+		"decoded shape":     `{"backupClone":"ok","restore":{"error":"restore exploded"}}`,
+		"raw-body fallback": `{"backupClone":{"error":{"code":"clone exploded"}},"restore":"ok"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFakeConsole(t)
 			f.mux.HandleFunc("POST /clusters/{id}/failover", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{"newClusterId":"new","results":`+results+`}`)
 			})
 
