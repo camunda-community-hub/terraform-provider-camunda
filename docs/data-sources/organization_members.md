@@ -38,5 +38,5 @@ Read-Only:
 - `email` (String) The email of the member.
 - `invite_pending` (Boolean) Whether the member hasn't accepted the invitation yet.
 - `name` (String) The name of the member.
-- `owner` (Boolean) Whether the member is the organization owner, whose roles can't be changed through the API.
-- `roles` (List of String) The roles of the member that can be assigned through the API. Other roles, such as `owner`, are reported by `owner` instead. One of: `admin`, `operationsengineer`, `taskuser`, `analyst`, `developer`, `visitor`.
+- `owner` (Boolean) Whether the member is the organization owner, whose roles can't be changed through the API. Convenience for `roles` containing `owner`.
+- `roles` (List of String) All roles of the member as the Console reports them, including roles that can't be assigned through the API, such as `owner`.
