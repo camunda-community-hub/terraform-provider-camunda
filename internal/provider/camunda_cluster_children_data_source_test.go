@@ -22,6 +22,14 @@ resource "camunda_cluster_client" "worker" {
   scopes     = ["Zeebe", "Operate"]
 }
 
+resource "camunda_cluster_client" "analyst" {
+  cluster_id = camunda_cluster.test.id
+  name       = "analyst"
+  scopes     = ["Optimize"]
+
+  depends_on = [camunda_cluster_client.worker]
+}
+
 data "camunda_cluster_client" "one" {
   cluster_id      = camunda_cluster.test.id
   zeebe_client_id = camunda_cluster_client.worker.zeebe_client_id
@@ -29,7 +37,7 @@ data "camunda_cluster_client" "one" {
 
 data "camunda_cluster_clients" "all" {
   cluster_id = camunda_cluster.test.id
-  depends_on = [camunda_cluster_client.worker]
+  depends_on = [camunda_cluster_client.worker, camunda_cluster_client.analyst]
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -37,10 +45,13 @@ data "camunda_cluster_clients" "all" {
 					resource.TestCheckResourceAttr("data.camunda_cluster_client.one", "name", "worker"),
 					resource.TestCheckResourceAttr("data.camunda_cluster_client.one", "scopes.#", "2"),
 					resource.TestCheckResourceAttr("data.camunda_cluster_client.one", "zeebe_address", fakeZeebeAddress),
-					resource.TestCheckResourceAttr("data.camunda_cluster_clients.all", "clients.#", "1"),
+					resource.TestCheckResourceAttr("data.camunda_cluster_clients.all", "clients.#", "2"),
+					// Sorted by client ID, whatever order the Console answers in.
+					resource.TestCheckResourceAttrPair("data.camunda_cluster_clients.all", "clients.0.zeebe_client_id", "camunda_cluster_client.worker", "zeebe_client_id"),
 					resource.TestCheckResourceAttr("data.camunda_cluster_clients.all", "clients.0.name", "worker"),
 					resource.TestCheckResourceAttr("data.camunda_cluster_clients.all", "clients.0.zeebe_address", fakeZeebeAddress),
-					resource.TestCheckResourceAttrPair("data.camunda_cluster_clients.all", "clients.0.zeebe_client_id", "camunda_cluster_client.worker", "zeebe_client_id"),
+					resource.TestCheckResourceAttrPair("data.camunda_cluster_clients.all", "clients.1.zeebe_client_id", "camunda_cluster_client.analyst", "zeebe_client_id"),
+					resource.TestCheckResourceAttr("data.camunda_cluster_clients.all", "clients.1.name", "analyst"),
 				),
 			},
 		},

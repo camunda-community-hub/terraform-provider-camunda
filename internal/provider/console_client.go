@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -329,6 +330,9 @@ func (c *consoleClient) ListClusterClients(ctx context.Context, clusterID string
 	if err != nil {
 		return nil, apiError(err, response)
 	}
+
+	// The Console doesn't order the list, and Terraform keeps it in order.
+	slices.SortFunc(listed, func(a, b console.ClusterClient) int { return strings.Compare(a.ClientId, b.ClientId) })
 
 	clients := make([]clusterClient, 0, len(listed))
 	for _, entry := range listed {
