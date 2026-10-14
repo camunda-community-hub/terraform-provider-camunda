@@ -155,6 +155,8 @@ type consoleState struct {
 	// Polls left before a new backup stops being in progress. It then reports
 	// failed instead of complete when failBackups is set.
 	backupPolls map[string]int
+	// clusterID -> cron expression
+	schedules   map[string]string
 	failBackups bool
 	members     map[string]console.Member
 }
@@ -170,10 +172,14 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		secrets:         map[string]map[string]string{},
 		backups:         map[string][]console.BackupDto{},
 		backupPolls:     map[string]int{},
+		schedules:       map[string]string{},
 		members:         map[string]console.Member{},
 	}
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
+		"GET /clusters/{id}/backups/schedule":        s.getSchedule,
+		"PUT /clusters/{id}/backups/schedule":        s.putSchedule,
+		"DELETE /clusters/{id}/backups/schedule":     s.deleteSchedule,
 		"GET /clusters/parameters":                   s.getParameters,
 		"GET /meta/ip-ranges":                        s.getIPRanges,
 		"GET /activity/json":                         s.getAuditLog,
@@ -380,6 +386,7 @@ func (s *consoleState) deleteCluster(w http.ResponseWriter, r *http.Request) {
 	delete(s.clients, id)
 	delete(s.secrets, id)
 	delete(s.backups, id)
+	delete(s.schedules, id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -572,6 +579,43 @@ func (s *consoleState) deleteBackup(w http.ResponseWriter, r *http.Request) {
 	deleted := backups[index]
 	s.backups[clusterID] = slices.Delete(backups, index, index+1)
 	writeJSON(s.t, w, deleted)
+}
+
+func (s *consoleState) getSchedule(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	schedule, ok := s.schedules[clusterID]
+	if !ok {
+		notFound(w, "backup schedule")
+		return
+	}
+	writeJSON(s.t, w, console.BackupScheduleDto{Name: "schedule-" + clusterID, Schedule: schedule})
+}
+
+func (s *consoleState) putSchedule(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+
+	var req console.BackupScheduleBody
+	if !s.decode(w, r, &req) {
+		return
+	}
+	if len(strings.Fields(req.Schedule)) != 5 {
+		http.Error(w, `{"message":"not a valid cron expression"}`, http.StatusBadRequest)
+		return
+	}
+	s.schedules[clusterID] = req.Schedule
+	writeJSON(s.t, w, console.BackupScheduleDto{Name: "schedule-" + clusterID, Schedule: req.Schedule})
+}
+
+func (s *consoleState) deleteSchedule(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+	delete(s.schedules, clusterID)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *consoleState) getMembers(w http.ResponseWriter, r *http.Request) {
