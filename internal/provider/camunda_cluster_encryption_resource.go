@@ -1,6 +1,9 @@
 package provider
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -21,21 +24,17 @@ type camundaClusterEncryptionData struct {
 }
 
 func NewCamundaClusterEncryptionResource() resource.Resource {
-	setKeys := func(op *op, plan camundaClusterEncryptionData) error {
-		clusterID := plan.ClusterID.ValueString()
-		if err := op.client.WaitClusterHealthy(op.ctx, clusterID); err != nil {
-			return err
-		}
-		return op.client.SetClusterEncryptionKeys(op.ctx, clusterID, plan.PrimaryKeyID.ValueString(), plan.SecondaryKeyID.ValueString())
-	}
-
 	return &managedResource[camundaClusterEncryptionData]{
 		typeName: "_cluster_encryption",
 		noun:     "cluster encryption",
 		schema:   clusterEncryptionSchema,
 		describe: func(d camundaClusterEncryptionData) string { return "cluster " + d.ClusterID.ValueString() },
 		create: func(op *op, plan camundaClusterEncryptionData) (camundaClusterEncryptionData, error) {
-			if err := setKeys(op, plan); err != nil {
+			clusterID := plan.ClusterID.ValueString()
+			if err := op.client.WaitClusterHealthy(op.ctx, clusterID); err != nil {
+				return plan, err
+			}
+			if err := op.client.SetClusterEncryptionKeys(op.ctx, clusterID, plan.PrimaryKeyID.ValueString(), plan.SecondaryKeyID.ValueString()); err != nil {
 				return plan, err
 			}
 
@@ -68,13 +67,6 @@ func NewCamundaClusterEncryptionResource() resource.Resource {
 			prior.SecondaryKeyID = prior.SecondaryKeyARN
 			return prior, nil
 		},
-		// Rotating the keys is the same call as setting them.
-		update: func(op *op, prior, plan camundaClusterEncryptionData) (camundaClusterEncryptionData, error) {
-			if err := setKeys(op, plan); err != nil {
-				return plan, err
-			}
-			return plan, op.client.WaitClusterEncryptionReady(op.ctx, plan.ClusterID.ValueString())
-		},
 		// The Console can't remove the keys; they stay configured on the cluster.
 		delete: func(op *op, prior camundaClusterEncryptionData) error { return nil },
 		importID: func(clusterID string) (camundaClusterEncryptionData, error) {
@@ -91,8 +83,10 @@ func clusterEncryptionSchema() schema.Schema {
 	return schema.Schema{
 		MarkdownDescription: "Manage the customer-managed encryption keys (BYOK) of a cluster on Camunda SaaS. " +
 			"The cluster must have been created with `encryption = \"External\"`, which requires the Enterprise plan and an AWS region. " +
-			"Creating the resource sets the keys and waits until the encryption is ready; changing the keys rotates them. " +
-			"The Console can't remove the keys, so destroying the resource only removes it from state and leaves the keys configured.",
+			"Creating the resource sets the keys and waits until the encryption is ready. " +
+			"**Once applied, the keys can't be changed or removed**: to use other keys, create a new cluster, so changing a key ID is an error. " +
+			"Rotating the key material in AWS KMS keeps the ARN and needs nothing here. " +
+			"Destroying the resource only removes it from state and leaves the keys configured.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -106,11 +100,13 @@ func clusterEncryptionSchema() schema.Schema {
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"primary_key_id": schema.StringAttribute{
+				PlanModifiers:       []planmodifier.String{keyIsImmutable{}},
 				MarkdownDescription: "ARN of the AWS KMS key in the cluster's primary region. Single-region and multi-region (`mrk-...`) keys are accepted, as long as the region in the ARN matches the cluster's.",
 				Required:            true,
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"secondary_key_id": schema.StringAttribute{
+				PlanModifiers:       []planmodifier.String{keyIsImmutable{}},
 				MarkdownDescription: "ARN of the AWS KMS key in the cluster's backup region. Required for dual-region clusters, must be omitted for single-region clusters, and must differ from `primary_key_id`.",
 				Optional:            true,
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
@@ -120,4 +116,36 @@ func clusterEncryptionSchema() schema.Schema {
 			"status":            computed("State of the encryption, `Ready` once the keys are in use."),
 		},
 	}
+}
+
+// keyIsImmutable rejects changing a key that is already applied: the Console
+// accepts the keys once, and a different key needs a new cluster. Replacing the
+// resource wouldn't help, since destroying it leaves the keys on the cluster.
+type keyIsImmutable struct{}
+
+func (keyIsImmutable) Description(context.Context) string {
+	return "Once applied, a key can't be changed; to use another key, create a new cluster."
+}
+
+func (m keyIsImmutable) MarkdownDescription(ctx context.Context) string { return m.Description(ctx) }
+
+func (keyIsImmutable) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	// Creating, destroying, and values not known yet are fine.
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() || req.PlanValue.IsUnknown() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Encryption key can't be changed",
+			fmt.Sprintf("The cluster uses %s. The Console doesn't allow changing, adding or removing a key once keys are applied; to use other keys, create a new cluster. Rotating the key material in AWS KMS keeps the ARN.", describeKey(req.StateValue)),
+		)
+	}
+}
+
+func describeKey(key types.String) string {
+	if key.IsNull() {
+		return "no key here"
+	}
+	return fmt.Sprintf("%q", key.ValueString())
 }

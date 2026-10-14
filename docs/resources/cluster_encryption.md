@@ -3,12 +3,12 @@
 page_title: "camunda_cluster_encryption Resource - terraform-provider-camunda"
 subcategory: ""
 description: |-
-  Manage the customer-managed encryption keys (BYOK) of a cluster on Camunda SaaS. The cluster must have been created with encryption = "External", which requires the Enterprise plan and an AWS region. Creating the resource sets the keys and waits until the encryption is ready; changing the keys rotates them. The Console can't remove the keys, so destroying the resource only removes it from state and leaves the keys configured.
+  Manage the customer-managed encryption keys (BYOK) of a cluster on Camunda SaaS. The cluster must have been created with encryption = "External", which requires the Enterprise plan and an AWS region. Creating the resource sets the keys and waits until the encryption is ready. Once applied, the keys can't be changed or removed: to use other keys, create a new cluster, so changing a key ID is an error. Rotating the key material in AWS KMS keeps the ARN and needs nothing here. Destroying the resource only removes it from state and leaves the keys configured.
 ---
 
 # camunda_cluster_encryption (Resource)
 
-Manage the customer-managed encryption keys (BYOK) of a cluster on Camunda SaaS. The cluster must have been created with `encryption = "External"`, which requires the Enterprise plan and an AWS region. Creating the resource sets the keys and waits until the encryption is ready; changing the keys rotates them. The Console can't remove the keys, so destroying the resource only removes it from state and leaves the keys configured.
+Manage the customer-managed encryption keys (BYOK) of a cluster on Camunda SaaS. The cluster must have been created with `encryption = "External"`, which requires the Enterprise plan and an AWS region. Creating the resource sets the keys and waits until the encryption is ready. **Once applied, the keys can't be changed or removed**: to use other keys, create a new cluster, so changing a key ID is an error. Rotating the key material in AWS KMS keeps the ARN and needs nothing here. Destroying the resource only removes it from state and leaves the keys configured.
 
 ## Example Usage
 

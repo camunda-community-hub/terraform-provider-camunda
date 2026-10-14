@@ -871,6 +871,11 @@ func (s *consoleState) updateClusterEncryption(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if cluster.Encryption.PrimaryKeyArn != nil {
+		http.Error(w, `{"message":"keys are already applied and can't be changed"}`, http.StatusConflict)
+		return
+	}
+
 	var req console.UpdateClusterEncryptionBody
 	if !s.decode(w, r, &req) {
 		return

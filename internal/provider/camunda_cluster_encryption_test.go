@@ -78,12 +78,10 @@ func TestClusterEncryptionResource(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			{
-				// Changing the key rotates it in place.
-				Config: encryptionConfig(f, "External", fakeKeyTwo),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "primary_key_arn", fakeKeyTwo),
-					resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "status", "Ready"),
-				),
+				// A key is applied once: changing it is rejected at plan time
+				// instead of calling the Console, and the key stays.
+				Config:      encryptionConfig(f, "External", fakeKeyTwo),
+				ExpectError: regexp.MustCompile(`Encryption\s+key\s+can't\s+be\s+changed`),
 			},
 			{
 				// Destroying leaves the keys on the cluster; the resource is just gone from state.
@@ -139,7 +137,7 @@ resource "camunda_cluster_encryption" "test" {
 				Check:  resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "secondary_key_id", fakeKeyBackupOne),
 			},
 			{
-				// The Console stops reporting the secondary key: Terraform plans to set it again.
+				// The Console stops reporting the secondary key: it can't be set again, which the plan reports.
 				PreConfig: func() {
 					state.do(func(s *consoleState) {
 						for _, cluster := range s.clusters {
@@ -149,9 +147,9 @@ resource "camunda_cluster_encryption" "test" {
 						}
 					})
 				},
-				Config:             config,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
+				Config:      config,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Encryption\s+key\s+can't\s+be\s+changed`),
 			},
 		},
 	})
@@ -269,6 +267,63 @@ resource "camunda_cluster_encryption" "test" {
 					resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "secondary_key_arn", fakeKeyBackupOne),
 					resource.TestCheckResourceAttr("camunda_cluster_encryption.test", "status", "Ready"),
 				),
+			},
+		},
+	})
+}
+
+func TestClusterEncryptionResourceRejectsChangingAppliedKeys(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	keyRegistered := func(want string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			var got string
+			state.do(func(s *consoleState) {
+				for _, cluster := range s.clusters {
+					if cluster.Encryption != nil && cluster.Encryption.PrimaryKeyArn != nil {
+						got = *cluster.Encryption.PrimaryKeyArn
+					}
+				}
+			})
+			if got != want {
+				return fmt.Errorf("Console primary key = %q, want %q", got, want)
+			}
+			return nil
+		}
+	}
+	rejected := regexp.MustCompile(`Encryption\s+key\s+can't\s+be\s+changed`)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: encryptionConfig(f, "External", fakeKeyOne),
+				Check:  keyRegistered(fakeKeyOne),
+			},
+			{
+				Config:      encryptionConfig(f, "External", fakeKeyTwo),
+				ExpectError: rejected,
+			},
+			{
+				// Adding a key to applied ones is a change too.
+				Config: byokClusterConfig(f, "External", false) + fmt.Sprintf(`
+resource "camunda_cluster_encryption" "test" {
+  cluster_id       = camunda_cluster.byok.id
+  primary_key_id   = %q
+  secondary_key_id = %q
+}
+`, fakeKeyOne, fakeKeyBackupOne),
+				ExpectError: rejected,
+			},
+			{
+				// An unchanged configuration plans nothing.
+				Config:   encryptionConfig(f, "External", fakeKeyOne),
+				PlanOnly: true,
+			},
+			{
+				// And the Console still has the first key.
+				Config: encryptionConfig(f, "External", fakeKeyOne),
+				Check:  keyRegistered(fakeKeyOne),
 			},
 		},
 	})
