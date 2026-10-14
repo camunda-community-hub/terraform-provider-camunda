@@ -66,6 +66,13 @@ func TestClusterBackupScheduleResource(t *testing.T) {
 				Config: backupScheduleConfig(f, "30 3 * * 1"),
 				Check:  expectSchedules("30 3 * * 1"),
 			},
+			{
+				// Removing only the schedule stops scheduled backups while the
+				// cluster stays, so the cluster's teardown can't hide a delete
+				// that did nothing.
+				Config: clusterConfig(f, "cluster", fakeTrialPlan, false),
+				Check:  expectSchedules(),
+			},
 		},
 	})
 }
