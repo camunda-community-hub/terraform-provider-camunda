@@ -716,3 +716,24 @@ func TestConsoleClientSecureConnectivityReportsUnreadableStatus(t *testing.T) {
 		t.Fatalf("GetSecureConnectivity = %v, want an error other than errNotFound", err)
 	}
 }
+
+func TestConsoleClientWaitSecureConnectivityActiveStopsWhenTheClusterIsGone(t *testing.T) {
+	f := newFakeConsole(t)
+	f.mux.HandleFunc("GET /clusters/{id}/secure-connectivity", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"cluster not found"}`, http.StatusNotFound)
+	})
+	f.mux.HandleFunc("GET /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"cluster not found"}`, http.StatusNotFound)
+	})
+	client := f.client(t)
+	client.clusterWaitTimeout = time.Minute
+
+	start := time.Now()
+	err := client.WaitSecureConnectivityActive(context.Background(), "gone")
+	if !errors.Is(err, errNotFound) {
+		t.Fatalf("WaitSecureConnectivityActive = %v, want errNotFound", err)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Fatalf("took %v, want it to give up at once instead of waiting for the timeout", elapsed)
+	}
+}
