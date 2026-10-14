@@ -72,3 +72,22 @@ type namedID struct {
 type ipRanges struct {
 	WebModeler []string
 }
+
+// auditEvent is one entry of the organization's activity log. Optional
+// fields are empty when the Console doesn't report them.
+type auditEvent struct {
+	Service string
+	Audit   string
+	// AuditType is the kind of action, such as "create" or "delete".
+	AuditType string
+	// Timestamp is in milliseconds since the Unix epoch.
+	Timestamp                int64
+	UserID                   string
+	Entity                   string
+	EntityID                 string
+	ParentEntity             string
+	ParentEntityID           string
+	EntityAttribute          string
+	EntityAttributeValueFrom string
+	EntityAttributeValueTo   string
+}
