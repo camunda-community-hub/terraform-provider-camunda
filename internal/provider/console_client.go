@@ -1089,12 +1089,21 @@ func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) (cl
 
 		// The generated client gave up on the whole body, clients included.
 		var listed struct {
-			Clients []console.ByomClientDto `json:"clients"`
+			Clients json.RawMessage `json:"clients"`
 		}
 		if err := json.Unmarshal(body, &listed); err != nil {
 			return nil, nil, false, fmt.Errorf("unable to read monitoring clients: %w", err)
 		}
-		return newMonitoringClients(listed.Clients), nil, false, nil
+		// A missing or null list is a malformed response, not "no clients":
+		// treating it as empty would make a refresh drop existing clients.
+		if len(listed.Clients) == 0 || string(listed.Clients) == "null" {
+			return nil, nil, false, fmt.Errorf("unable to read monitoring clients: the response has no client list")
+		}
+		var clients []console.ByomClientDto
+		if err := json.Unmarshal(listed.Clients, &clients); err != nil {
+			return nil, nil, false, fmt.Errorf("unable to read monitoring clients: %w", err)
+		}
+		return newMonitoringClients(clients), nil, false, nil
 	}
 
 	if byom := found.Status.ByomStatus; byom != nil {

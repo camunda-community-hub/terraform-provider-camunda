@@ -793,3 +793,38 @@ func TestConsoleClientWaitMonitoringActiveStopsWhenTheClusterIsGone(t *testing.T
 		t.Fatalf("took %v, want it to give up at once instead of waiting for the timeout", elapsed)
 	}
 }
+
+func TestConsoleClientRejectsMonitoringResponsesWithoutAClientList(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing clients": `{"status":{}}`,
+		"null clients":    `{"status":{},"clients":null}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeConsole(t)
+			f.mux.HandleFunc("GET /clusters/{id}/monitoring/clients", func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.WriteString(w, body)
+			})
+
+			// Reading it as no clients would make a refresh drop existing ones.
+			clients, err := f.client(t).ListMonitoringClients(context.Background(), "c1")
+			if err == nil || errors.Is(err, errNotFound) {
+				t.Fatalf("ListMonitoringClients = %v, %v; want an error", clients, err)
+			}
+			if _, err := f.client(t).GetMonitoringClient(context.Background(), "c1", "client"); err == nil || errors.Is(err, errNotFound) {
+				t.Fatalf("GetMonitoringClient = %v, want an error other than errNotFound", err)
+			}
+		})
+	}
+
+	t.Run("empty clients", func(t *testing.T) {
+		f := newFakeConsole(t)
+		f.mux.HandleFunc("GET /clusters/{id}/monitoring/clients", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, `{"status":{},"clients":[]}`)
+		})
+
+		clients, err := f.client(t).ListMonitoringClients(context.Background(), "c1")
+		if err != nil || len(clients) != 0 {
+			t.Fatalf("ListMonitoringClients = %v, %v; want an empty list", clients, err)
+		}
+	})
+}
