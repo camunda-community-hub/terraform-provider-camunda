@@ -4,11 +4,14 @@ page_title: "camunda_cluster_upgrade Action - terraform-provider-camunda"
 subcategory: ""
 description: |-
   Upgrade a cluster to the latest generation available and wait until it is healthy again. Fails if there is no upgrade, if the upgrade is blocked, or if the cluster isn't ready for it. The upgrade can't be undone. Needs Terraform 1.14 or later.
+  A cluster managed by camunda_cluster with auto_update = false: after the upgrade, set its generation to the generation it now runs (for example the default_generation_id of the camunda_channel data source). Otherwise the next apply sees a different generation than configured and plans to replace the cluster, deleting all its data. Guard the cluster with lifecycle { prevent_destroy = true } and check the plan before applying. With auto_update = true there is nothing to reconcile.
 ---
 
 # camunda_cluster_upgrade (Action)
 
 Upgrade a cluster to the latest generation available and wait until it is healthy again. Fails if there is no upgrade, if the upgrade is blocked, or if the cluster isn't ready for it. The upgrade can't be undone. Needs Terraform 1.14 or later.
+
+**A cluster managed by `camunda_cluster` with `auto_update = false`:** after the upgrade, set its `generation` to the generation it now runs (for example the `default_generation_id` of the `camunda_channel` data source). Otherwise the next apply sees a different generation than configured and plans to replace the cluster, **deleting all its data**. Guard the cluster with `lifecycle { prevent_destroy = true }` and check the plan before applying. With `auto_update = true` there is nothing to reconcile.
 
 ## Example Usage
 
@@ -19,6 +22,11 @@ action "camunda_cluster_upgrade" "example" {
   }
 }
 
+# For a cluster with auto_update = false, set generation on the camunda_cluster
+# resource to the generation it now runs afterwards. Until then the next apply
+# plans to replace the cluster and delete its data, so guard it with
+# lifecycle { prevent_destroy = true } and check the plan.
+#
 # Run it with:
 #   terraform apply -invoke=action.camunda_cluster_upgrade.example
 ```
