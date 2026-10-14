@@ -188,6 +188,8 @@ func (p *CamundaCloudProvider) DataSources(ctx context.Context) []func() datasou
 		NewCamundaChannelDataSource,
 		NewCamundaClusterPlanTypeDataSource,
 		NewCamundaIPRangesDataSource,
+		NewCamundaOrganizationMemberDataSource,
+		NewCamundaOrganizationMembersDataSource,
 		NewCamundaRegionDataSource,
 	}
 }
