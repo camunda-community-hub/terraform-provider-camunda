@@ -220,3 +220,56 @@ func TestClusterFailoverActionRejectsNoBackups(t *testing.T) {
 		}
 	}
 }
+
+func TestClusterFailoverActionRejectsRestoreOutsideBackups(t *testing.T) {
+	ctx := context.Background()
+	a := NewCamundaClusterFailoverAction()
+	schemaResp := &action.SchemaResponse{}
+	a.Schema(ctx, action.SchemaRequest{}, schemaResp)
+	objectType := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	listType := tftypes.List{ElementType: tftypes.String}
+
+	tests := map[string]struct {
+		backups   tftypes.Value
+		restore   tftypes.Value
+		wantError bool
+	}{
+		"restore among backups": {
+			backups: tftypes.NewValue(listType, []tftypes.Value{stringValue("b1"), stringValue("b2")}),
+			restore: stringValue("b2"),
+		},
+		"restore outside backups": {
+			backups:   tftypes.NewValue(listType, []tftypes.Value{stringValue("b1"), stringValue("b2")}),
+			restore:   stringValue("b3"),
+			wantError: true,
+		},
+		"unknown restore": {
+			backups: tftypes.NewValue(listType, []tftypes.Value{stringValue("b1")}),
+			restore: tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
+		},
+		"unknown backups": {
+			backups: tftypes.NewValue(listType, tftypes.UnknownValue),
+			restore: stringValue("b3"),
+		},
+		"one unknown backup": {
+			backups: tftypes.NewValue(listType, []tftypes.Value{stringValue("b1"), tftypes.NewValue(tftypes.String, tftypes.UnknownValue)}),
+			restore: stringValue("b3"),
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			resp := &action.ValidateConfigResponse{}
+			a.(action.ActionWithValidateConfig).ValidateConfig(ctx, action.ValidateConfigRequest{
+				Config: tfsdk.Config{Schema: schemaResp.Schema, Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{
+					"cluster_id":        stringValue("c1"),
+					"backup_ids":        tc.backups,
+					"restore_backup_id": tc.restore,
+				})},
+			}, resp)
+
+			if got := resp.Diagnostics.HasError(); got != tc.wantError {
+				t.Fatalf("rejected = %v (%v), want %v", got, resp.Diagnostics, tc.wantError)
+			}
+		})
+	}
+}

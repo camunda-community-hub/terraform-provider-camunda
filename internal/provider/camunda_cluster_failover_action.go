@@ -1,13 +1,17 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -43,6 +47,7 @@ func NewCamundaClusterFailoverAction() action.Action {
 				},
 			}
 		},
+		validate: validateFailoverConfig,
 		invoke: func(op *op, config clusterFailoverActionData, progress func(string)) error {
 			clusterID := config.ClusterID.ValueString()
 			backupIDs := make([]string, 0, len(config.BackupIDs))
@@ -62,4 +67,33 @@ func NewCamundaClusterFailoverAction() action.Action {
 			return nil
 		},
 	}
+}
+
+// validateFailoverConfig checks that the backup to restore is one of the
+// backups to clone, before the irreversible request is sent. It says nothing
+// while either is not known yet.
+func validateFailoverConfig(ctx context.Context, config tfsdk.Config) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	var restoreID types.String
+	var backupIDs types.List
+	diags.Append(config.GetAttribute(ctx, path.Root("restore_backup_id"), &restoreID)...)
+	diags.Append(config.GetAttribute(ctx, path.Root("backup_ids"), &backupIDs)...)
+	if diags.HasError() || restoreID.IsNull() || restoreID.IsUnknown() || backupIDs.IsNull() || backupIDs.IsUnknown() {
+		return diags
+	}
+
+	for _, element := range backupIDs.Elements() {
+		id, ok := element.(types.String)
+		if !ok || id.IsUnknown() || id.Equal(restoreID) {
+			return diags
+		}
+	}
+
+	diags.AddAttributeError(
+		path.Root("restore_backup_id"),
+		"Backup to restore is not among the backups to clone",
+		fmt.Sprintf("restore_backup_id %q must be one of backup_ids.", restoreID.ValueString()),
+	)
+	return diags
 }

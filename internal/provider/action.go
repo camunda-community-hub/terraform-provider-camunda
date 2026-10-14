@@ -6,6 +6,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 )
 
 // managedAction is the action counterpart of managedResource: an action
@@ -23,11 +25,16 @@ type managedAction[M any] struct {
 	// invoke runs the action. progress reports a message to the practitioner
 	// while it runs.
 	invoke func(op *op, config M, progress func(message string)) error
+	// validate, if set, checks the configuration before anything runs. The
+	// configuration may hold unknown values, so it is read attribute by
+	// attribute rather than into M.
+	validate func(ctx context.Context, config tfsdk.Config) diag.Diagnostics
 
 	client *consoleClient
 }
 
 var _ action.ActionWithConfigure = &managedAction[struct{}]{}
+var _ action.ActionWithValidateConfig = &managedAction[struct{}]{}
 
 func (a *managedAction[M]) Metadata(ctx context.Context, req action.MetadataRequest, resp *action.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + a.typeName
@@ -46,6 +53,12 @@ func (a *managedAction[M]) Configure(ctx context.Context, req action.ConfigureRe
 	client, diags := consoleClientFromProviderData(req.ProviderData)
 	resp.Diagnostics.Append(diags...)
 	a.client = client
+}
+
+func (a *managedAction[M]) ValidateConfig(ctx context.Context, req action.ValidateConfigRequest, resp *action.ValidateConfigResponse) {
+	if a.validate != nil {
+		resp.Diagnostics.Append(a.validate(ctx, req.Config)...)
+	}
 }
 
 func (a *managedAction[M]) Invoke(ctx context.Context, req action.InvokeRequest, resp *action.InvokeResponse) {
