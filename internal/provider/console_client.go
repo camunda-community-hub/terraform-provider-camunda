@@ -1306,13 +1306,37 @@ func (c *consoleClient) WaitClusterEncryptionReady(ctx context.Context, clusterI
 
 // UpgradeCluster starts upgrading the cluster to the latest generation
 // available. The cluster is still updating when this returns; see
-// WaitClusterHealthy.
+// WaitClusterUpgraded.
 func (c *consoleClient) UpgradeCluster(ctx context.Context, clusterID string) (*generationUpgrade, error) {
 	upgraded, response, err := c.api.UpgradeCluster(ctx, clusterID).Execute()
 	if err != nil {
 		return nil, apiError(err, response)
 	}
-	return &generationUpgrade{From: upgraded.OldGeneration.Name, To: upgraded.NewGeneration.Name}, nil
+	return &generationUpgrade{From: upgraded.OldGeneration.Name, To: upgraded.NewGeneration.Name, ToID: upgraded.NewGeneration.Id}, nil
+}
+
+// WaitClusterUpgraded blocks until the cluster runs the generation and reports
+// healthy twice in a row. A healthy cluster on another generation is still
+// waiting: the cluster is healthy before the upgrade shows up.
+func (c *consoleClient) WaitClusterUpgraded(ctx context.Context, clusterID, generationID string) error {
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{
+			string(console.CLUSTERCOMPONENTSTATUS_CREATING),
+			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
+		},
+		target:      []string{string(console.CLUSTERCOMPONENTSTATUS_HEALTHY)},
+		consecutive: 2,
+		refresh: func() (string, error) {
+			cluster, err := c.getAPICluster(ctx, clusterID)
+			if err != nil {
+				return "", err
+			}
+			if cluster.Generation.Uuid != generationID {
+				return string(console.CLUSTERCOMPONENTSTATUS_UPDATING), nil
+			}
+			return string(cluster.Status.Ready), nil
+		},
+	})
 }
 
 // WakeCluster starts resuming a suspended cluster. The cluster is still

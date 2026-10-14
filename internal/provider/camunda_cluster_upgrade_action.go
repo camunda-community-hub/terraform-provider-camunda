@@ -40,7 +40,7 @@ func NewCamundaClusterUpgradeAction() action.Action {
 			}
 			progress(fmt.Sprintf("Upgrading cluster %s from generation %s to %s", clusterID, upgrade.From, upgrade.To))
 
-			if err := op.client.WaitClusterHealthy(op.ctx, clusterID); err != nil {
+			if err := op.client.WaitClusterUpgraded(op.ctx, clusterID, upgrade.ToID); err != nil {
 				return fmt.Errorf("cluster %s never became healthy after the upgrade: %w", clusterID, err)
 			}
 			progress(fmt.Sprintf("Cluster %s is healthy on generation %s", clusterID, upgrade.To))

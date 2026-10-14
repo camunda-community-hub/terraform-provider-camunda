@@ -243,6 +243,8 @@ type clusterEncryption struct {
 type generationUpgrade struct {
 	From string
 	To   string
+	// ToID is the ID of the generation the cluster is upgraded to.
+	ToID string
 }
 
 // restore is a backup restore. The states are the Console's: "PENDING",
