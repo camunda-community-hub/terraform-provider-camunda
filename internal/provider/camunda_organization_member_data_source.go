@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -27,7 +26,7 @@ func newOrganizationMemberDataSourceData(m member) organizationMemberDataSourceD
 	return organizationMemberDataSourceData{
 		Email:         types.StringValue(m.Email),
 		Name:          types.StringValue(m.Name),
-		Roles:         stringValues(m.Roles),
+		Roles:         stringValues(m.AllRoles),
 		Owner:         types.BoolValue(m.Owner),
 		InvitePending: types.BoolValue(m.InvitePending),
 	}
@@ -110,16 +109,13 @@ func organizationMemberAttributes() map[string]schema.Attribute {
 			MarkdownDescription: "The name of the member.",
 		},
 		"roles": schema.ListAttribute{
-			Computed:    true,
-			ElementType: types.StringType,
-			MarkdownDescription: fmt.Sprintf(
-				"The roles of the member that can be assigned through the API. Other roles, such as `owner`, are reported by `owner` instead. One of: `%s`.",
-				strings.Join(assignableMemberRoles, "`, `"),
-			),
+			Computed:            true,
+			ElementType:         types.StringType,
+			MarkdownDescription: "All roles of the member as the Console reports them, including roles that can't be assigned through the API, such as `owner`.",
 		},
 		"owner": schema.BoolAttribute{
 			Computed:            true,
-			MarkdownDescription: "Whether the member is the organization owner, whose roles can't be changed through the API.",
+			MarkdownDescription: "Whether the member is the organization owner, whose roles can't be changed through the API. Convenience for `roles` containing `owner`.",
 		},
 		"invite_pending": schema.BoolAttribute{
 			Computed:            true,

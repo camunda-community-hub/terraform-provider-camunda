@@ -480,8 +480,10 @@ func newMember(listed console.Member) member {
 		Name:          listed.Name,
 		InvitePending: listed.InvitePending,
 		Roles:         []string{},
+		AllRoles:      []string{},
 	}
 	for _, role := range listed.Roles {
+		found.AllRoles = append(found.AllRoles, string(role))
 		if role == console.ORGANIZATIONROLE_OWNER {
 			found.Owner = true
 		}
