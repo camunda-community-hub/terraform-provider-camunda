@@ -346,8 +346,10 @@ func TestConsoleClientReplaysOnlyWritesThatSetState(t *testing.T) {
 	}{
 		"UpdateCluster (PATCH)": {
 			pattern: "PATCH /clusters/{id}",
-			call:    func(c *consoleClient) error { return c.UpdateCluster(ctx, "c1", "name", "desc") },
-			ok:      func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
+			call: func(c *consoleClient) error {
+				return c.UpdateCluster(ctx, "c1", clusterUpdate{Name: "name", Description: "desc"})
+			},
+			ok: func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
 		},
 		"SetMemberRoles (POST)": {
 			pattern: "POST /members/{email}",

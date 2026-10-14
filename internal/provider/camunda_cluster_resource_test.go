@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -175,4 +176,128 @@ func countIs(state *consoleState, count func(*consoleState) int, want int, what 
 		return fmt.Errorf("Console holds %d %s, want %d", n, what, want)
 	}
 	return nil
+}
+
+func clusterWithSettingsConfig(f *fakeConsole, settings string) string {
+	return clusterConfig(f, "cluster", fakeTrialPlan, false) + fmt.Sprintf(`
+resource "camunda_cluster" "settings" {
+  name       = "settings"
+  channel    = data.camunda_channel.stable.id
+  region     = data.camunda_region.belgium.id
+  plan_type  = data.camunda_cluster_plan_type.plan.id
+  generation = data.camunda_channel.stable.default_generation_id
+  %s
+}
+`, settings)
+}
+
+func TestClusterResourceSettings(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	var clusterID string
+	expectSettings := func(stage console.CamundaClusterStage, packages float64) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			var got clusterSettings
+			state.do(func(s *consoleState) { got = *s.clusterSettings[clusterID] })
+			if got.stageLabel != stage || got.hardwarePackages != packages {
+				return fmt.Errorf("Console settings = %+v, want stage %q and %v packages", got, stage, packages)
+			}
+			return nil
+		}
+	}
+	keepsCluster := func(*terraform.State) error {
+		var found bool
+		state.do(func(s *consoleState) { _, found = s.clusters[clusterID] })
+		if !found {
+			return fmt.Errorf("cluster %s was replaced", clusterID)
+		}
+		return nil
+	}
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: clusterWithSettingsConfig(f, `
+  stage_label       = "dev"
+  hardware_packages = 2
+  backup_region     = data.camunda_region.belgium.id
+  encryption        = "Software"
+`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrWith("camunda_cluster.settings", "id", func(id string) error {
+						clusterID = id
+						return nil
+					}),
+					expectSettings(console.CAMUNDACLUSTERSTAGE_DEV, 2),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "backup_region", fakeRegionID),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption", "Software"),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "owner_id", "owner-1"),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "status", "Healthy"),
+					resource.TestCheckResourceAttrSet("camunda_cluster.settings", "created"),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "labels.#", "0"),
+					resource.TestMatchResourceAttr("camunda_cluster.settings", "links.zeebe", regexp.MustCompile(`^https://cluster-\d+\.zeebe\.example\.com$`)),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "links.operate", ""),
+				),
+			},
+			{
+				// Stage label and hardware packages change in place.
+				Config: clusterWithSettingsConfig(f, `
+  stage_label       = "prod"
+  hardware_packages = 3
+  backup_region     = data.camunda_region.belgium.id
+  encryption        = "Software"
+`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					keepsCluster,
+					expectSettings(console.CAMUNDACLUSTERSTAGE_PROD, 3),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "stage_label", "prod"),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "hardware_packages", "3"),
+				),
+			},
+			{
+				// The encryption type can't change in place.
+				Config: clusterWithSettingsConfig(f, `
+  stage_label       = "prod"
+  hardware_packages = 3
+  backup_region     = data.camunda_region.belgium.id
+  encryption        = "Hardware"
+`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption", "Hardware"),
+					resource.TestCheckResourceAttrWith("camunda_cluster.settings", "id", func(id string) error {
+						if id == clusterID {
+							return fmt.Errorf("expected the cluster to be replaced, still %s", id)
+						}
+						return nil
+					}),
+				),
+			},
+		},
+	})
+}
+
+func TestClusterResourceReportsConsoleDefaults(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: clusterConfig(f, "cluster", fakeTrialPlan, false),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("camunda_cluster.test", "encryption", "Provider"),
+					resource.TestCheckNoResourceAttr("camunda_cluster.test", "backup_region"),
+					resource.TestCheckNoResourceAttr("camunda_cluster.test", "stage_label"),
+				),
+			},
+			{
+				// A second apply plans nothing: the defaults the Console
+				// reported don't show up as drift.
+				Config:   clusterConfig(f, "cluster", fakeTrialPlan, false),
+				PlanOnly: true,
+			},
+		},
+	})
 }

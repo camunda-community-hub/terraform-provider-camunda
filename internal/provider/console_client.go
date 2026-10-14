@@ -137,6 +137,27 @@ func (c *consoleClient) CreateCluster(ctx context.Context, cl cluster) (string, 
 	if cl.Description != "" {
 		req.Description = &cl.Description
 	}
+	if cl.BackupRegionID != "" {
+		req.BackupRegionId = &cl.BackupRegionID
+	}
+	if cl.Encryption != "" {
+		encryption, err := console.NewClusterEncryptionKeyFromValue(cl.Encryption)
+		if err != nil {
+			return "", fmt.Errorf("unable to read encryption: %w", err)
+		}
+		req.Encryption = encryption
+	}
+	if cl.StageLabel != "" {
+		stage, err := console.NewCamundaClusterStageFromValue(cl.StageLabel)
+		if err != nil {
+			return "", fmt.Errorf("unable to read stage label: %w", err)
+		}
+		req.StageLabel = stage
+	}
+	if cl.HardwarePackages != 0 {
+		packages := float64(cl.HardwarePackages)
+		req.HardwarePackages = &packages
+	}
 
 	created, response, err := c.api.CreateCluster(ctx).CreateClusterRequest(req).Execute()
 	if err != nil {
@@ -151,7 +172,26 @@ func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*clus
 	if err != nil {
 		return nil, err
 	}
-	return &cluster{
+	return newCluster(found), nil
+}
+
+// ListClusters returns all clusters of the organization.
+func (c *consoleClient) ListClusters(ctx context.Context) ([]cluster, error) {
+	listed, response, err := c.api.GetClusters(ctx).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	clusters := make([]cluster, 0, len(listed))
+	for i := range listed {
+		clusters = append(clusters, *newCluster(&listed[i]))
+	}
+	return clusters, nil
+}
+
+// newCluster converts the API's cluster to the provider's.
+func newCluster(found *console.Cluster) *cluster {
+	cl := &cluster{
 		ID:           found.Uuid,
 		Name:         found.Name,
 		Description:  found.GetDescription(),
@@ -160,7 +200,29 @@ func (c *consoleClient) GetCluster(ctx context.Context, clusterID string) (*clus
 		PlanTypeID:   found.PlanType.Uuid,
 		GenerationID: found.Generation.Uuid,
 		AutoUpdate:   found.AutoUpdate,
-	}, nil
+		OwnerID:      found.OwnerId,
+		Created:      found.Created,
+		Labels:       found.Labels,
+		Status:       string(found.Status.Ready),
+		Links: clusterLinks{
+			Zeebe:      found.Links.GetZeebe(),
+			Operate:    found.Links.GetOperate(),
+			Tasklist:   found.Links.GetTasklist(),
+			Optimize:   found.Links.GetOptimize(),
+			Connectors: found.Links.GetConnectors(),
+			Identity:   found.Links.GetIdentity(),
+			Console:    found.Links.GetConsole(),
+			OAuth:      found.Links.GetOauth(),
+		},
+	}
+	if found.BackupRegion != nil {
+		cl.BackupRegionID = found.BackupRegion.Uuid
+	}
+	if found.Encryption != nil {
+		cl.Encryption = string(found.Encryption.Type)
+		cl.EncryptionStatus = string(found.Encryption.GetStatus())
+	}
+	return cl
 }
 
 func (c *consoleClient) getAPICluster(ctx context.Context, clusterID string) (*console.Cluster, error) {
@@ -168,12 +230,22 @@ func (c *consoleClient) getAPICluster(ctx context.Context, clusterID string) (*c
 	return found, apiError(err, response)
 }
 
-// UpdateCluster sets the cluster's name and description; an empty description
-// clears it.
-func (c *consoleClient) UpdateCluster(ctx context.Context, clusterID, name, description string) error {
-	response, err := c.api.UpdateCluster(withReplayableWrite(ctx), clusterID).
-		UpdateClusterBody(console.UpdateClusterBody{Name: &name, Description: &description}).
-		Execute()
+// UpdateCluster applies the update in place.
+func (c *consoleClient) UpdateCluster(ctx context.Context, clusterID string, update clusterUpdate) error {
+	body := console.UpdateClusterBody{Name: &update.Name, Description: &update.Description}
+	if update.StageLabel != "" {
+		stage, err := console.NewCamundaClusterStageFromValue(update.StageLabel)
+		if err != nil {
+			return fmt.Errorf("unable to read stage label: %w", err)
+		}
+		body.StageLabel = stage
+	}
+	if update.HardwarePackages != 0 {
+		packages := float64(update.HardwarePackages)
+		body.NumberOfAllocatedHwPackages = &packages
+	}
+
+	response, err := c.api.UpdateCluster(withReplayableWrite(ctx), clusterID).UpdateClusterBody(body).Execute()
 	return apiError(err, response)
 }
 

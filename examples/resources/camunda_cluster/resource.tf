@@ -31,4 +31,10 @@ resource "camunda_cluster" "test" {
   plan_type  = data.camunda_cluster_plan_type.this.id
 
   auto_update = true
+
+  stage_label = "dev"
+}
+
+output "zeebe_url" {
+  value = camunda_cluster.test.links.zeebe
 }
