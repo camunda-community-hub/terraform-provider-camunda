@@ -839,3 +839,51 @@ func newBackup(b *console.BackupDto) backup {
 		GenerationName: b.GetGenerationName(),
 	}
 }
+
+// GetBackup returns the backup, or errNotFound when either the cluster or the
+// backup does not exist.
+func (c *consoleClient) GetBackup(ctx context.Context, clusterID, backupID string) (*backup, error) {
+	backups, err := c.ListBackups(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, b := range backups {
+		if b.ID == backupID {
+			return &b, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: backup %q in cluster %s", errNotFound, backupID, clusterID)
+}
+
+// CreateBackup starts a backup, which is not complete yet when this returns;
+// see WaitBackupComplete.
+func (c *consoleClient) CreateBackup(ctx context.Context, clusterID string) (*backup, error) {
+	created, response, err := c.api.CreateBackup(ctx, clusterID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	b := newBackup(created)
+	return &b, nil
+}
+
+func (c *consoleClient) DeleteBackup(ctx context.Context, clusterID, backupID string) error {
+	_, response, err := c.api.DeleteBackup(ctx, clusterID, backupID).Execute()
+	return apiError(err, response)
+}
+
+// WaitBackupComplete blocks until the backup is complete. A failed backup ends
+// the wait with an error.
+func (c *consoleClient) WaitBackupComplete(ctx context.Context, clusterID, backupID string) error {
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{string(console.BACKUPSTATUS_IN_PROGRESS), string(console.BACKUPSTATUS_MINUS)},
+		target:  []string{string(console.BACKUPSTATUS_COMPLETE)},
+		refresh: func() (string, error) {
+			found, err := c.GetBackup(ctx, clusterID, backupID)
+			if err != nil {
+				return "", err
+			}
+			return found.Status, nil
+		},
+	})
+}
