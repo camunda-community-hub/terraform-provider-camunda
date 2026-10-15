@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -16,6 +17,7 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces
 var _ provider.Provider = &CamundaCloudProvider{}
+var _ provider.ProviderWithActions = &CamundaCloudProvider{}
 
 // CamundaCloudProvider satisfies the provider.Provider interface. Its Configure
 // hands a *consoleClient to every resource and data source.
@@ -158,6 +160,7 @@ func (p *CamundaCloudProvider) Configure(ctx context.Context, req provider.Confi
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
+	resp.ActionData = client
 }
 
 // configOrEnv returns the configured value, else the environment variable,
@@ -203,5 +206,14 @@ func (p *CamundaCloudProvider) DataSources(ctx context.Context) []func() datasou
 		NewCamundaOrganizationMemberDataSource,
 		NewCamundaOrganizationMembersDataSource,
 		NewCamundaRegionDataSource,
+	}
+}
+
+func (p *CamundaCloudProvider) Actions(ctx context.Context) []func() action.Action {
+	return []func() action.Action{
+		NewCamundaClusterFailoverAction,
+		NewCamundaClusterRestoreAction,
+		NewCamundaClusterUpgradeAction,
+		NewCamundaClusterWakeAction,
 	}
 }

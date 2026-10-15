@@ -885,3 +885,45 @@ func TestConsoleClientMonitoringReportsANullStatusAsUnreadable(t *testing.T) {
 		t.Fatalf("ListMonitoringClients: %v", err)
 	}
 }
+
+func TestConsoleClientWaitClusterUpgradedIgnoresHealthyOldGeneration(t *testing.T) {
+	f := newFakeConsole(t)
+	var polls atomic.Int32
+	f.mux.HandleFunc("GET /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		cluster := clusterWithStatus(r.PathValue("id"), console.CLUSTERCOMPONENTSTATUS_HEALTHY)
+		// The cluster is healthy before the upgrade becomes visible.
+		cluster.Generation = console.ClusterGeneration{Uuid: "gen-1"}
+		if polls.Add(1) > 3 {
+			cluster.Generation = console.ClusterGeneration{Uuid: "gen-2"}
+		}
+		writeJSON(t, w, cluster)
+	})
+
+	if err := f.client(t).WaitClusterUpgraded(context.Background(), "c1", "gen-2"); err != nil {
+		t.Fatalf("WaitClusterUpgraded: %v", err)
+	}
+	// Three polls on the old generation, then healthy twice on the new one.
+	if got := polls.Load(); got < 5 {
+		t.Fatalf("returned after %d polls, want it to wait for the new generation", got)
+	}
+}
+
+func TestConsoleClientWaitClusterUpgradedReportsAStoppedCluster(t *testing.T) {
+	f := newFakeConsole(t)
+	var polls atomic.Int32
+	f.mux.HandleFunc("GET /clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		polls.Add(1)
+		// The upgrade stopped before the generation changed.
+		cluster := clusterWithStatus(r.PathValue("id"), console.CLUSTERCOMPONENTSTATUS_UNHEALTHY)
+		cluster.Generation = console.ClusterGeneration{Uuid: "gen-1"}
+		writeJSON(t, w, cluster)
+	})
+
+	err := f.client(t).WaitClusterUpgraded(context.Background(), "c1", "gen-2")
+	if err == nil || !strings.Contains(err.Error(), "Unhealthy") {
+		t.Fatalf("WaitClusterUpgraded = %v, want an error naming the status", err)
+	}
+	if polls.Load() > 3 {
+		t.Fatalf("polled %d times, want it to stop at the unexpected status instead of waiting for the timeout", polls.Load())
+	}
+}

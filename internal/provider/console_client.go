@@ -1301,3 +1301,160 @@ func (c *consoleClient) WaitClusterEncryptionReady(ctx context.Context, clusterI
 		},
 	})
 }
+
+// Cluster operations
+
+// UpgradeCluster starts upgrading the cluster to the latest generation
+// available. The cluster is still updating when this returns; see
+// WaitClusterUpgraded.
+func (c *consoleClient) UpgradeCluster(ctx context.Context, clusterID string) (*generationUpgrade, error) {
+	upgraded, response, err := c.api.UpgradeCluster(ctx, clusterID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return &generationUpgrade{From: upgraded.OldGeneration.Name, To: upgraded.NewGeneration.Name, ToID: upgraded.NewGeneration.Id}, nil
+}
+
+// WaitClusterUpgraded blocks until the cluster runs the generation and reports
+// healthy twice in a row. A healthy cluster on another generation is still
+// waiting: the cluster is healthy before the upgrade shows up.
+func (c *consoleClient) WaitClusterUpgraded(ctx context.Context, clusterID, generationID string) error {
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{
+			string(console.CLUSTERCOMPONENTSTATUS_CREATING),
+			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
+		},
+		target:      []string{string(console.CLUSTERCOMPONENTSTATUS_HEALTHY)},
+		consecutive: 2,
+		refresh: func() (string, error) {
+			cluster, err := c.getAPICluster(ctx, clusterID)
+			if err != nil {
+				return "", err
+			}
+			// A healthy cluster on the old generation is still waiting for the
+			// upgrade to show up. Any other status is reported as it is, so a
+			// cluster that stops, say as unhealthy or suspended, fails the wait.
+			if cluster.Generation.Uuid != generationID && cluster.Status.Ready == console.CLUSTERCOMPONENTSTATUS_HEALTHY {
+				return string(console.CLUSTERCOMPONENTSTATUS_UPDATING), nil
+			}
+			return string(cluster.Status.Ready), nil
+		},
+	})
+}
+
+// WakeCluster starts resuming a suspended cluster. The cluster is still
+// resuming when this returns; see WaitClusterResumed.
+func (c *consoleClient) WakeCluster(ctx context.Context, clusterID string) error {
+	response, err := c.api.Wake(ctx, clusterID).Execute()
+	return apiError(err, response)
+}
+
+// WaitClusterResumed blocks until a woken cluster reports healthy twice in a
+// row.
+func (c *consoleClient) WaitClusterResumed(ctx context.Context, clusterID string) error {
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{
+			string(console.CLUSTERCOMPONENTSTATUS_SUSPENDED),
+			string(console.CLUSTERCOMPONENTSTATUS_RESUMING),
+			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
+		},
+		target:      []string{string(console.CLUSTERCOMPONENTSTATUS_HEALTHY)},
+		consecutive: 2,
+		refresh: func() (string, error) {
+			cluster, err := c.getAPICluster(ctx, clusterID)
+			if err != nil {
+				return "", err
+			}
+			return string(cluster.Status.Ready), nil
+		},
+	})
+}
+
+// RestoreBackup starts restoring the backup onto its cluster, which suspends
+// the cluster until the restore is in flight; see WaitRestoreComplete.
+func (c *consoleClient) RestoreBackup(ctx context.Context, clusterID, backupID string) (*restore, error) {
+	started, response, err := c.api.RestoreFromBackup(ctx, clusterID, backupID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return &restore{ID: started.Uuid, BackupID: started.BackupId, State: string(started.State)}, nil
+}
+
+// WaitRestoreComplete blocks until the restore that RestoreBackup started has
+// completed. A failed or aborted restore ends the wait with an error, and so
+// does a newer restore of the same backup that supersedes it, because the
+// Console only reports the latest one.
+func (c *consoleClient) WaitRestoreComplete(ctx context.Context, clusterID, backupID, restoreID string) error {
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{
+			string(console.RESTORESTATE_PENDING),
+			string(console.RESTORESTATE_VALIDATING),
+			string(console.RESTORESTATE_IN_PROGRESS),
+		},
+		target: []string{string(console.RESTORESTATE_COMPLETED)},
+		refresh: func() (string, error) {
+			latest, response, err := c.api.GetRestore(ctx, clusterID, backupID).Execute()
+			if err != nil {
+				return "", apiError(err, response)
+			}
+			if latest.Uuid != restoreID {
+				return "", fmt.Errorf("restore %s was superseded by restore %s of the same backup", restoreID, latest.Uuid)
+			}
+			return string(latest.State), nil
+		},
+	})
+}
+
+// TriggerFailover creates a new cluster in the cluster's paired backup region
+// from the backups and restores one of them onto it. The source cluster is
+// suspended and can never be resumed.
+func (c *consoleClient) TriggerFailover(ctx context.Context, clusterID string, backupIDs []string, restoreBackupID string) (*failover, error) {
+	result, response, err := c.api.TriggerFailover(ctx, clusterID).
+		TriggerFailoverBody(console.TriggerFailoverBody{BackupIds: backupIDs, RestoreBackupId: restoreBackupID}).
+		Execute()
+	if err == nil {
+		results, _ := json.Marshal(result.Results)
+		return newFailover(result.NewClusterId, results), nil
+	}
+
+	// The generated client can't decode every shape the Console reports for
+	// the results, but the failover has happened by then.
+	var openAPIErr *console.GenericOpenAPIError
+	if response != nil && response.StatusCode == http.StatusOK && errors.As(err, &openAPIErr) {
+		var body struct {
+			NewClusterID string          `json:"newClusterId"`
+			Results      json.RawMessage `json:"results"`
+		}
+		if json.Unmarshal(openAPIErr.Body(), &body) == nil && body.NewClusterID != "" {
+			return newFailover(body.NewClusterID, body.Results), nil
+		}
+	}
+	return nil, apiError(err, response)
+}
+
+// newFailover builds the failover result and finds the stages the Console
+// reports as failed: each of them is either "ok" or an object with an error.
+func newFailover(newClusterID string, results []byte) *failover {
+	result := &failover{NewClusterID: newClusterID, Results: string(results)}
+
+	var stages map[string]json.RawMessage
+	if json.Unmarshal(results, &stages) != nil {
+		return result
+	}
+	for _, stage := range []string{"backupClone", "restore"} {
+		var reported struct {
+			Error json.RawMessage `json:"error"`
+		}
+		if json.Unmarshal(stages[stage], &reported) != nil || len(reported.Error) == 0 || string(reported.Error) == "null" {
+			continue
+		}
+
+		message := string(reported.Error)
+		var text string
+		if json.Unmarshal(reported.Error, &text) == nil {
+			message = text
+		}
+		result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", stage, message))
+	}
+	return result
+}

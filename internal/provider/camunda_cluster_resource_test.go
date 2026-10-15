@@ -385,3 +385,43 @@ func TestClusterResourceWithExternalEncryptionWaitsForKeysInsteadOfHealth(t *tes
 		},
 	})
 }
+
+// An upgrade outside Terraform, such as the camunda_cluster_upgrade action, moves
+// a cluster without auto_update to another generation. Until the configuration
+// follows, the plan replaces the cluster, which the action documents.
+func TestClusterResourceAfterAManualUpgradeWithoutAutoUpdate(t *testing.T) {
+	f := newFakeConsole(t)
+	state := f.serveConsole(t)
+	config := clusterConfig(f, "cluster", fakeTrialPlan, false)
+	upgradedConfig := strings.Replace(config, "data.camunda_channel.stable.default_generation_id", strconv.Quote(fakeGeneration2), 1)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{Config: config},
+			{
+				PreConfig: func() {
+					state.do(func(s *consoleState) {
+						for _, cluster := range s.clusters {
+							cluster.Generation = console.ClusterGeneration{Uuid: fakeGeneration2}
+						}
+					})
+				},
+				// The refresh records the generation the cluster now runs.
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+			{
+				// The configured generation is stale: the plan replaces the cluster.
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+			{
+				// Following the cluster to its new generation settles the plan.
+				Config:   upgradedConfig,
+				PlanOnly: true,
+			},
+		},
+	})
+}
