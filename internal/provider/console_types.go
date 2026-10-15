@@ -78,7 +78,8 @@ type ipRanges struct {
 type auditEvent struct {
 	Service string
 	Audit   string
-	// AuditType is the kind of action, such as "create" or "delete".
+	// AuditType is the kind of action the Console reports: "c" (create), "r"
+	// (read), "u" (update) or "d" (delete).
 	AuditType string
 	// Timestamp is in milliseconds since the Unix epoch; nil when the Console
 	// doesn't report one.

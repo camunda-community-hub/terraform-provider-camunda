@@ -81,7 +81,7 @@ func auditLogSchema() schema.Schema {
 					Attributes: map[string]schema.Attribute{
 						"service":    str("The service the event belongs to."),
 						"audit":      str("What happened."),
-						"audit_type": str("The kind of action, such as `create` or `delete`."),
+						"audit_type": str("The kind of action: `c` (create), `r` (read), `u` (update) or `d` (delete)."),
 						"timestamp": schema.Int64Attribute{
 							Computed:            true,
 							MarkdownDescription: "When the event happened, in milliseconds since the Unix epoch. Null if not reported.",

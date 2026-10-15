@@ -17,7 +17,7 @@ data "camunda_audit_log" "all" {}
 output "cluster_creations" {
   value = [
     for event in data.camunda_audit_log.all.events : event
-    if event.entity == "cluster" && event.audit_type == "create"
+    if event.entity == "cluster" && event.audit_type == "c"
   ]
 }
 ```
@@ -36,7 +36,7 @@ output "cluster_creations" {
 Read-Only:
 
 - `audit` (String) What happened.
-- `audit_type` (String) The kind of action, such as `create` or `delete`.
+- `audit_type` (String) The kind of action: `c` (create), `r` (read), `u` (update) or `d` (delete).
 - `entity` (String) The kind of object the event concerns.
 - `entity_attribute` (String) The attribute that changed. Empty if not reported.
 - `entity_attribute_value_from` (String) The attribute's value before the change. Empty if not reported.
