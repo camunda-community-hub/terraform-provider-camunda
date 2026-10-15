@@ -1,10 +1,13 @@
 package provider
 
+import "time"
+
 // The values consoleClient returns and accepts. They carry only what the
 // provider uses, in plain Go types, so the generated API types stay inside
 // console_client.go.
 
-// cluster is a cluster as the Console reports it. CreateCluster ignores ID.
+// cluster is a cluster as the Console reports it. CreateCluster ignores the
+// fields the Console only reports.
 type cluster struct {
 	ID           string
 	Name         string
@@ -14,6 +17,49 @@ type cluster struct {
 	PlanTypeID   string
 	GenerationID string
 	AutoUpdate   bool
+
+	// BackupRegionID is empty when the cluster has none.
+	BackupRegionID string
+	// Encryption is the encryption key type, such as "Provider". CreateCluster
+	// sends it only when set.
+	Encryption string
+	// StageLabel and HardwarePackages are only sent, never reported: the
+	// Console doesn't return them. Empty and 0 mean unset.
+	StageLabel       string
+	HardwarePackages int64
+
+	// Reported by the Console only.
+	OwnerID          string
+	Created          time.Time
+	Labels           []string
+	Status           string
+	EncryptionStatus string // empty unless the Console reports one
+	// The key ARNs are empty until keys were supplied to an "External" cluster.
+	EncryptionPrimaryKeyARN   string
+	EncryptionSecondaryKeyARN string
+	Links                     clusterLinks
+}
+
+// clusterLinks are the URLs of a cluster's components; empty when not reported.
+type clusterLinks struct {
+	Zeebe      string
+	Operate    string
+	Tasklist   string
+	Optimize   string
+	Connectors string
+	Identity   string
+	Console    string
+	OAuth      string
+}
+
+// clusterUpdate is what UpdateCluster changes in place. An empty Description
+// clears it; an empty StageLabel and a zero HardwarePackages leave the
+// attribute as it is.
+type clusterUpdate struct {
+	Name             string
+	Description      string
+	StageLabel       string
+	HardwarePackages int64
 }
 
 // allowlistEntry is one entry of a cluster's IP allowlist.

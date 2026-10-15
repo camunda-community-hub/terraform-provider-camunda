@@ -127,6 +127,13 @@ const (
 	fakeZeebeAddress = "zeebe.example.com:443"
 )
 
+// clusterSettings are the cluster attributes the Console accepts but never
+// reports.
+type clusterSettings struct {
+	stageLabel       console.CamundaClusterStage
+	hardwarePackages float64
+}
+
 // consoleState is an in-memory Camunda Console.
 type consoleState struct {
 	t  *testing.T
@@ -134,6 +141,8 @@ type consoleState struct {
 
 	nextID   int
 	clusters map[string]*console.Cluster
+	// What the Console accepts for a cluster but doesn't report back.
+	clusterSettings map[string]*clusterSettings
 	// Polls left before a new cluster reports healthy.
 	creating map[string]int
 	// clusterID -> clientID -> client
@@ -146,12 +155,13 @@ type consoleState struct {
 // serveConsole registers the Console API on the fake and returns its state.
 func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 	s := &consoleState{
-		t:        t,
-		clusters: map[string]*console.Cluster{},
-		creating: map[string]int{},
-		clients:  map[string]map[string]console.CreatedClusterClient{},
-		secrets:  map[string]map[string]string{},
-		members:  map[string]console.Member{},
+		t:               t,
+		clusters:        map[string]*console.Cluster{},
+		clusterSettings: map[string]*clusterSettings{},
+		creating:        map[string]int{},
+		clients:         map[string]map[string]console.CreatedClusterClient{},
+		secrets:         map[string]map[string]string{},
+		members:         map[string]console.Member{},
 	}
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
@@ -260,7 +270,19 @@ func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := s.newID("cluster")
+	settings := &clusterSettings{}
+	if req.StageLabel != nil {
+		settings.stageLabel = *req.StageLabel
+	}
+	if req.HardwarePackages != nil {
+		settings.hardwarePackages = *req.HardwarePackages
+	}
+	s.clusterSettings[id] = settings
+	zeebeLink := fmt.Sprintf("https://%s.zeebe.example.com", id)
 	s.clusters[id] = &console.Cluster{
+		OwnerId:     "owner-1",
+		Links:       console.ClusterLinks{Zeebe: &zeebeLink},
+		Encryption:  &console.ClusterEncryption{Type: console.CLUSTERENCRYPTIONKEY_PROVIDER},
 		Uuid:        id,
 		Name:        req.Name,
 		Channel:     console.ClusterChannel{Uuid: req.ChannelId},
@@ -270,6 +292,13 @@ func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
 		AutoUpdate:  req.AutoUpdate != nil && *req.AutoUpdate,
 		Description: req.Description,
 		Status:      console.ClusterStatus{Ready: console.CLUSTERCOMPONENTSTATUS_CREATING},
+	}
+	cluster := s.clusters[id]
+	if req.Encryption != nil {
+		cluster.Encryption.Type = *req.Encryption
+	}
+	if req.BackupRegionId != nil {
+		cluster.BackupRegion = &console.ClusterBackupRegion{Uuid: *req.BackupRegionId}
 	}
 	s.creating[id] = 2
 	writeJSON(s.t, w, console.CreateCluster200Response{ClusterId: id})
@@ -284,6 +313,9 @@ func (s *consoleState) getCluster(w http.ResponseWriter, r *http.Request) {
 
 	if s.creating[id] > 0 {
 		s.creating[id]--
+	} else if e := cluster.Encryption; e != nil && e.Type == console.CLUSTERENCRYPTIONKEY_EXTERNAL && e.PrimaryKeyArn == nil {
+		// The cluster waits for its external keys.
+		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_WAITING_FOR_INPUT
 	} else {
 		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_HEALTHY
 	}
@@ -306,6 +338,13 @@ func (s *consoleState) updateCluster(w http.ResponseWriter, r *http.Request) {
 	if req.Description != nil {
 		cluster.Description = req.Description
 	}
+	settings := s.clusterSettings[cluster.Uuid]
+	if req.StageLabel != nil {
+		settings.stageLabel = *req.StageLabel
+	}
+	if req.NumberOfAllocatedHwPackages != nil {
+		settings.hardwarePackages = *req.NumberOfAllocatedHwPackages
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -315,6 +354,7 @@ func (s *consoleState) deleteCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	delete(s.clusters, id)
+	delete(s.clusterSettings, id)
 	delete(s.clients, id)
 	delete(s.secrets, id)
 	w.WriteHeader(http.StatusNoContent)

@@ -34,6 +34,8 @@ func TestCamundaClusterReplaceAttributes(t *testing.T) {
 		Generation:  types.StringValue("gen-1"),
 		AutoUpdate:  types.BoolValue(true),
 		Description: types.StringNull(),
+		Labels:      types.ListNull(types.StringType),
+		Links:       types.ObjectNull(clusterLinksModel{}.attrTypes()),
 	}
 
 	withoutAutoUpdate := func(d *camundaClusterData) { d.AutoUpdate = types.BoolValue(false) }

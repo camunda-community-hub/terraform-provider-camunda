@@ -2,12 +2,12 @@
 page_title: "camunda_cluster Resource - terraform-provider-camunda"
 subcategory: ""
 description: |-
-    Manage a cluster on Camunda SaaS. Only name and description can be updated in place. Changing plan_type, generation (unless auto_update is enabled), auto_update, channel or region destroys and recreates the cluster, deleting all data of the cluster. Use lifecycle { prevent_destroy = true } to guard against this.
+    Manage a cluster on Camunda SaaS. Only name, description, stage_label and hardware_packages can be updated in place. Changing plan_type, generation (unless auto_update is enabled), auto_update, channel, region, backup_region or encryption destroys and recreates the cluster, deleting all data of the cluster. Use lifecycle { prevent_destroy = true } to guard against this.
 ---
 
 # camunda_cluster (Resource)
 
-Manage a cluster on Camunda SaaS. Only `name` and `description` can be updated in place. Changing `plan_type`, `generation` (unless `auto_update` is enabled), `auto_update`, `channel` or `region` destroys and recreates the cluster, **deleting all data of the cluster**. Use `lifecycle { prevent_destroy = true }` to guard against this.
+Manage a cluster on Camunda SaaS. Only `name`, `description`, `stage_label` and `hardware_packages` can be updated in place. Changing `plan_type`, `generation` (unless `auto_update` is enabled), `auto_update`, `channel`, `region`, `backup_region` or `encryption` destroys and recreates the cluster, **deleting all data of the cluster**. Use `lifecycle { prevent_destroy = true }` to guard against this.
 
 This creates a new Camunda cluster to which a new workflow can be deployed.
 
@@ -49,6 +49,12 @@ resource "camunda_cluster" "test" {
   plan_type  = data.camunda_cluster_plan_type.this.id
 
   auto_update = true
+
+  stage_label = "dev"
+}
+
+output "zeebe_url" {
+  value = camunda_cluster.test.links.zeebe
 }
 ```
 
@@ -66,12 +72,38 @@ resource "camunda_cluster" "test" {
 ### Optional
 
 - `auto_update` (Boolean) Auto Update. Changing it replaces the cluster.
+- `backup_region` (String) ID of the region that stores the cluster's backups, see the `camunda_region` data source. Only available if the sales plan supports it (Enterprise). Changing it replaces the cluster.
 - `description` (String) Description of the cluster (1 to 150 characters). Remove the attribute to clear it.
+- `encryption` (String) Type of the key that encrypts the cluster's data: `Software`, `Hardware`, `Provider` or `External`. The Console defaults to `Provider`. Changing it replaces the cluster. A cluster with `External` keys stays at `WaitingForInput` until its keys are supplied with `camunda_cluster_encryption`; creating it doesn't wait for it to become healthy.
+- `hardware_packages` (Number) Number of hardware packages allocated to the cluster. Only available on request and for Advanced offering cluster types; the Console defaults to 1. Can be changed in place. The Console doesn't report it back, so changes made outside Terraform aren't detected.
+- `stage_label` (String) Stage the cluster serves, one of `dev`, `test`, `stage` or `prod`. Can be changed in place. The Console doesn't report it back, so changes made outside Terraform aren't detected, and removing the attribute only stops Terraform from managing it.
 
 ### Read-Only
 
+- `created` (String) When the cluster was created, as an RFC 3339 timestamp.
 - `current_generation` (String) Generation the cluster currently runs.
+- `encryption_primary_key_arn` (String) ARN of the primary customer-managed key. Only reported when `encryption` is `External` and keys were supplied, see `camunda_cluster_encryption`.
+- `encryption_secondary_key_arn` (String) ARN of the secondary customer-managed key, for dual-region clusters. Only reported when `encryption` is `External` and keys were supplied.
+- `encryption_status` (String) State of the cluster's encryption. Only reported when `encryption` is `External`.
 - `id` (String) Cluster ID
+- `labels` (List of String) Labels of the cluster, as reported by the Console.
+- `links` (Attributes) URLs of the cluster's components. A component the cluster doesn't have has an empty URL. (see [below for nested schema](#nestedatt--links))
+- `owner_id` (String) ID of the user or client that owns the cluster.
+- `status` (String) Status of the cluster, such as `Healthy` or `Suspended`.
+
+<a id="nestedatt--links"></a>
+### Nested Schema for `links`
+
+Read-Only:
+
+- `connectors` (String) Connectors URL.
+- `console` (String) URL of the cluster in Console.
+- `identity` (String) Identity URL.
+- `oauth` (String) OAuth token URL.
+- `operate` (String) Operate URL.
+- `optimize` (String) Optimize URL.
+- `tasklist` (String) Tasklist URL.
+- `zeebe` (String) Zeebe gateway URL.
 
 ## Import
 
