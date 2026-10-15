@@ -164,6 +164,13 @@ type consoleState struct {
 	backupPolls map[string]int
 	// clusterID -> cron expression
 	schedules map[string]string
+	// clusterID -> polls left before external monitoring is active; absent when it is not activated
+	monitoringPolls map[string]int
+	// slowMonitoring keeps new external monitoring provisioning for good.
+	slowMonitoring bool
+	// clusterID -> monitoring clients, and their current password by uuid
+	monitoringClients   map[string][]console.ByomClientDto
+	monitoringPasswords map[string]string
 	// clusterID -> secure connectivity activated for the cluster
 	secureConnectivity map[string]*fakeSecureConnectivity
 	// slowSecureConnectivity keeps new secure connectivity provisioning for good.
@@ -175,48 +182,57 @@ type consoleState struct {
 // serveConsole registers the Console API on the fake and returns its state.
 func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 	s := &consoleState{
-		t:                  t,
-		clusters:           map[string]*console.Cluster{},
-		clusterSettings:    map[string]*clusterSettings{},
-		creating:           map[string]int{},
-		clients:            map[string]map[string]console.CreatedClusterClient{},
-		secrets:            map[string]map[string]string{},
-		backups:            map[string][]console.BackupDto{},
-		backupPolls:        map[string]int{},
-		schedules:          map[string]string{},
-		secureConnectivity: map[string]*fakeSecureConnectivity{},
-		members:            map[string]console.Member{},
+		t:                   t,
+		clusters:            map[string]*console.Cluster{},
+		clusterSettings:     map[string]*clusterSettings{},
+		creating:            map[string]int{},
+		clients:             map[string]map[string]console.CreatedClusterClient{},
+		secrets:             map[string]map[string]string{},
+		backups:             map[string][]console.BackupDto{},
+		backupPolls:         map[string]int{},
+		schedules:           map[string]string{},
+		monitoringPolls:     map[string]int{},
+		monitoringClients:   map[string][]console.ByomClientDto{},
+		monitoringPasswords: map[string]string{},
+		secureConnectivity:  map[string]*fakeSecureConnectivity{},
+		members:             map[string]console.Member{},
 	}
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
-		"POST /clusters/{id}/secure-connectivity":    s.activateSecureConnectivity,
-		"GET /clusters/{id}/secure-connectivity":     s.getSecureConnectivity,
-		"DELETE /clusters/{id}/secure-connectivity":  s.deactivateSecureConnectivity,
-		"GET /clusters/{id}/backups/schedule":        s.getSchedule,
-		"PUT /clusters/{id}/backups/schedule":        s.putSchedule,
-		"DELETE /clusters/{id}/backups/schedule":     s.deleteSchedule,
-		"GET /clusters/parameters":                   s.getParameters,
-		"GET /meta/ip-ranges":                        s.getIPRanges,
-		"GET /activity/json":                         s.getAuditLog,
-		"POST /clusters":                             s.createCluster,
-		"GET /clusters":                              s.listClusters,
-		"GET /clusters/{id}":                         s.getCluster,
-		"PATCH /clusters/{id}":                       s.updateCluster,
-		"DELETE /clusters/{id}":                      s.deleteCluster,
-		"PUT /clusters/{id}/ipallowlist":             s.updateIPAllowlist,
-		"POST /clusters/{id}/clients":                s.createClient,
-		"GET /clusters/{id}/clients":                 s.listClients,
-		"GET /clusters/{id}/clients/{clientId}":      s.getClient,
-		"DELETE /clusters/{id}/clients/{clientId}":   s.deleteClient,
-		"POST /clusters/{id}/secrets":                s.createSecret,
-		"GET /clusters/{id}/secrets":                 s.getSecrets,
-		"DELETE /clusters/{id}/secrets/{secretName}": s.deleteSecret,
-		"GET /clusters/{id}/backups":                 s.listBackups,
-		"POST /clusters/{id}/backups":                s.createBackup,
-		"DELETE /clusters/{id}/backups/{backupId}":   s.deleteBackup,
-		"GET /members":                               s.getMembers,
-		"POST /members/{email}":                      s.updateMember,
-		"DELETE /members/{email}":                    s.deleteMember,
+		"POST /clusters/{id}/monitoring":                           s.activateMonitoring,
+		"DELETE /clusters/{id}/monitoring":                         s.deactivateMonitoring,
+		"GET /clusters/{id}/monitoring/clients":                    s.listMonitoringClients,
+		"POST /clusters/{id}/monitoring/clients":                   s.createMonitoringClient,
+		"POST /clusters/{id}/monitoring/clients/{clientId}/rotate": s.rotateMonitoringClientPassword,
+		"DELETE /clusters/{id}/monitoring/clients/{clientId}":      s.deleteMonitoringClient,
+		"POST /clusters/{id}/secure-connectivity":                  s.activateSecureConnectivity,
+		"GET /clusters/{id}/secure-connectivity":                   s.getSecureConnectivity,
+		"DELETE /clusters/{id}/secure-connectivity":                s.deactivateSecureConnectivity,
+		"GET /clusters/{id}/backups/schedule":                      s.getSchedule,
+		"PUT /clusters/{id}/backups/schedule":                      s.putSchedule,
+		"DELETE /clusters/{id}/backups/schedule":                   s.deleteSchedule,
+		"GET /clusters/parameters":                                 s.getParameters,
+		"GET /meta/ip-ranges":                                      s.getIPRanges,
+		"GET /activity/json":                                       s.getAuditLog,
+		"POST /clusters":                                           s.createCluster,
+		"GET /clusters":                                            s.listClusters,
+		"GET /clusters/{id}":                                       s.getCluster,
+		"PATCH /clusters/{id}":                                     s.updateCluster,
+		"DELETE /clusters/{id}":                                    s.deleteCluster,
+		"PUT /clusters/{id}/ipallowlist":                           s.updateIPAllowlist,
+		"POST /clusters/{id}/clients":                              s.createClient,
+		"GET /clusters/{id}/clients":                               s.listClients,
+		"GET /clusters/{id}/clients/{clientId}":                    s.getClient,
+		"DELETE /clusters/{id}/clients/{clientId}":                 s.deleteClient,
+		"POST /clusters/{id}/secrets":                              s.createSecret,
+		"GET /clusters/{id}/secrets":                               s.getSecrets,
+		"DELETE /clusters/{id}/secrets/{secretName}":               s.deleteSecret,
+		"GET /clusters/{id}/backups":                               s.listBackups,
+		"POST /clusters/{id}/backups":                              s.createBackup,
+		"DELETE /clusters/{id}/backups/{backupId}":                 s.deleteBackup,
+		"GET /members":                                             s.getMembers,
+		"POST /members/{email}":                                    s.updateMember,
+		"DELETE /members/{email}":                                  s.deleteMember,
 	}
 	for pattern, handler := range routes {
 		f.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
@@ -402,6 +418,8 @@ func (s *consoleState) deleteCluster(w http.ResponseWriter, r *http.Request) {
 	delete(s.secrets, id)
 	delete(s.backups, id)
 	delete(s.schedules, id)
+	delete(s.monitoringPolls, id)
+	delete(s.monitoringClients, id)
 	delete(s.secureConnectivity, id)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -711,6 +729,113 @@ func (s *consoleState) deactivateSecureConnectivity(w http.ResponseWriter, r *ht
 	}
 	delete(s.secureConnectivity, clusterID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) activateMonitoring(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+	if _, active := s.monitoringPolls[clusterID]; active {
+		http.Error(w, `{"message":"already activated"}`, http.StatusConflict)
+		return
+	}
+	s.monitoringPolls[clusterID] = 2
+	if s.slowMonitoring {
+		s.monitoringPolls[clusterID] = 1 << 20
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) deactivateMonitoring(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+	if _, active := s.monitoringPolls[clusterID]; !active {
+		http.Error(w, `{"message":"not activated"}`, http.StatusConflict)
+		return
+	}
+	delete(s.monitoringPolls, clusterID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) listMonitoringClients(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+
+	clients := s.monitoringClients[clusterID]
+	if clients == nil {
+		clients = []console.ByomClientDto{}
+	}
+	status := map[string]any{}
+	if polls, active := s.monitoringPolls[clusterID]; active {
+		if polls > 0 {
+			s.monitoringPolls[clusterID]--
+		} else {
+			status = map[string]any{
+				"metricsEndpoint": map[string]any{"target": "metrics.example.com", "scheme": "https", "path": "/metrics"},
+				"conditions":      []any{map[string]any{"type": "Ready", "status": "True"}},
+			}
+		}
+	}
+	writeJSON(s.t, w, map[string]any{"clients": clients, "status": status})
+}
+
+func (s *consoleState) createMonitoringClient(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+
+	var req console.CreateMonitoringClientRequest
+	if !s.decode(w, r, &req) {
+		return
+	}
+	id := s.newID("monitoring-client")
+	client := console.ByomClientDto{
+		Uuid: id, Name: req.Username, Username: req.Username,
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), LastUsed: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		CreatedBy: "u1", CreatedByName: "User One",
+	}
+	s.monitoringClients[clusterID] = append(s.monitoringClients[clusterID], client)
+	s.monitoringPasswords[id] = s.newID("password")
+	s.writeMonitoringClient(w, client)
+}
+
+func (s *consoleState) rotateMonitoringClientPassword(w http.ResponseWriter, r *http.Request) {
+	clusterID, clientID := r.PathValue("id"), r.PathValue("clientId")
+	for _, client := range s.monitoringClients[clusterID] {
+		if client.Uuid == clientID {
+			s.monitoringPasswords[clientID] = s.newID("password")
+			s.writeMonitoringClient(w, client)
+			return
+		}
+	}
+	notFound(w, "monitoring client")
+}
+
+func (s *consoleState) deleteMonitoringClient(w http.ResponseWriter, r *http.Request) {
+	clusterID, clientID := r.PathValue("id"), r.PathValue("clientId")
+	clients := s.monitoringClients[clusterID]
+	index := slices.IndexFunc(clients, func(c console.ByomClientDto) bool { return c.Uuid == clientID })
+	if index < 0 {
+		notFound(w, "monitoring client")
+		return
+	}
+	s.monitoringClients[clusterID] = slices.Delete(clients, index, index+1)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) writeMonitoringClient(w http.ResponseWriter, client console.ByomClientDto) {
+	writeJSON(s.t, w, console.CreateMonitoringClient200Response{
+		Uuid: client.Uuid, Name: client.Name, Username: client.Username,
+		Created: client.Created, LastUsed: client.LastUsed,
+		CreatedBy: client.CreatedBy, CreatedByName: client.CreatedByName,
+		Password: s.monitoringPasswords[client.Uuid],
+	})
 }
 
 func (s *consoleState) getMembers(w http.ResponseWriter, r *http.Request) {

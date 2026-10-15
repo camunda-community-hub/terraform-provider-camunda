@@ -49,6 +49,8 @@ type widgetStore struct {
 	readyErr error
 	// goneOnDelete makes delete find the widget already gone.
 	goneOnDelete bool
+	// failReads makes read fail with a server error.
+	failReads bool
 }
 
 func newWidgetStore() *widgetStore {
@@ -109,6 +111,9 @@ func widgetResource(store *widgetStore) *managedResource[widget] {
 		read: func(op *op, prior widget) (widget, error) {
 			var stored storedWidget
 			var ok bool
+			if store.do(func(s *widgetStore) { ok = s.failReads }); ok {
+				return widget{}, fmt.Errorf("500 Internal Server Error")
+			}
 			store.do(func(s *widgetStore) { stored, ok = s.widgets[prior.Id.ValueString()] })
 			if !ok {
 				return widget{}, fmt.Errorf("%w: widget %s", errNotFound, prior.Id.ValueString())
@@ -346,5 +351,94 @@ func TestLifecycleWithoutUpdateRejectsUpdates(t *testing.T) {
 
 	if !resp.Diagnostics.HasError() || resp.Diagnostics[0].Summary() != "Unexpected Update" {
 		t.Fatalf("expected an Unexpected Update error, got %v", resp.Diagnostics)
+	}
+}
+
+// widgetObjectType is the type of the widget resource's model.
+func widgetObjectType(t *testing.T, store *widgetStore) (frameworkresource.SchemaResponse, tftypes.Object) {
+	t.Helper()
+	schemaResp := frameworkresource.SchemaResponse{}
+	widgetResource(store).Schema(context.Background(), frameworkresource.SchemaRequest{}, &schemaResp)
+	return schemaResp, schemaResp.Schema.Type().TerraformType(context.Background()).(tftypes.Object)
+}
+
+func widgetValue(objectType tftypes.Object, name string, id, token any, revision any) tftypes.Value {
+	return tftypes.NewValue(objectType, map[string]tftypes.Value{
+		"id":       tftypes.NewValue(tftypes.String, id),
+		"name":     tftypes.NewValue(tftypes.String, name),
+		"token":    tftypes.NewValue(tftypes.String, token),
+		"revision": tftypes.NewValue(tftypes.Number, revision),
+	})
+}
+
+func TestLifecycleKeepsWhatACreateReturnedWhenReadingItBackFails(t *testing.T) {
+	ctx := context.Background()
+	store := newWidgetStore()
+	store.failReads = true
+	schemaResp, objectType := widgetObjectType(t, store)
+
+	// Without awaitReady, create is not saved before the read back.
+	widgets := widgetResource(store)
+	widgets.awaitReady = nil
+
+	resp := &frameworkresource.CreateResponse{State: tfsdk.State{Schema: schemaResp.Schema, Raw: tftypes.NewValue(objectType, nil)}}
+	widgets.Create(ctx, frameworkresource.CreateRequest{
+		Plan: tfsdk.Plan{Schema: schemaResp.Schema, Raw: widgetValue(objectType, "gear", tftypes.UnknownValue, tftypes.UnknownValue, tftypes.UnknownValue)},
+	}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected the failed read to be reported")
+	}
+	var kept widget
+	resp.Diagnostics.Append(resp.State.Get(ctx, &kept)...)
+	if kept.Id.ValueString() != "w1" || kept.Token.ValueString() != "token-w1" {
+		t.Fatalf("state = %+v, want the created widget with the token only create knows", kept)
+	}
+}
+
+func TestLifecycleKeepsWhatAnUpdateReturnedWhenReadingItBackFails(t *testing.T) {
+	ctx := context.Background()
+	store := newWidgetStore()
+	store.widgets["w1"] = storedWidget{name: "gear", revision: 1}
+	store.failReads = true
+	schemaResp, objectType := widgetObjectType(t, store)
+
+	prior := widgetValue(objectType, "gear", "w1", "token-w1", 1)
+	resp := &frameworkresource.UpdateResponse{State: tfsdk.State{Schema: schemaResp.Schema, Raw: prior}}
+	widgetResource(store).Update(ctx, frameworkresource.UpdateRequest{
+		State: tfsdk.State{Schema: schemaResp.Schema, Raw: prior},
+		Plan:  tfsdk.Plan{Schema: schemaResp.Schema, Raw: widgetValue(objectType, "sprocket", "w1", "token-w1", 1)},
+	}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected the failed read to be reported")
+	}
+	var kept widget
+	resp.Diagnostics.Append(resp.State.Get(ctx, &kept)...)
+	if kept.Name.ValueString() != "sprocket" {
+		t.Fatalf("state = %+v, want the updated widget instead of the stale one", kept)
+	}
+}
+
+func TestLifecycleDoesNotSaveAWriteWithUnknownValuesWhenReadingItBackFails(t *testing.T) {
+	ctx := context.Background()
+	store := newWidgetStore()
+	store.widgets["w1"] = storedWidget{name: "gear", revision: 1}
+	store.failReads = true
+	schemaResp, objectType := widgetObjectType(t, store)
+
+	// The revision is computed and unknown in the plan, and only read fills it in.
+	prior := widgetValue(objectType, "gear", "w1", "token-w1", 1)
+	resp := &frameworkresource.UpdateResponse{State: tfsdk.State{Schema: schemaResp.Schema, Raw: prior}}
+	widgetResource(store).Update(ctx, frameworkresource.UpdateRequest{
+		State: tfsdk.State{Schema: schemaResp.Schema, Raw: prior},
+		Plan:  tfsdk.Plan{Schema: schemaResp.Schema, Raw: widgetValue(objectType, "sprocket", "w1", "token-w1", tftypes.UnknownValue)},
+	}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected the failed read to be reported")
+	}
+	if !resp.State.Raw.IsFullyKnown() {
+		t.Fatalf("state holds unknown values: %v", resp.State.Raw)
 	}
 }
