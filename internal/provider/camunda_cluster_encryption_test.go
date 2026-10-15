@@ -463,3 +463,39 @@ func TestClusterEncryptionResourceRejectsOtherKeysAlreadyApplied(t *testing.T) {
 		},
 	})
 }
+
+func TestClusterEncryptionResourceImportNeedsAppliedKeys(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+	clusterIDOf := func(address string) resource.ImportStateIdFunc {
+		return func(s *terraform.State) (string, error) {
+			return s.RootModule().Resources[address].Primary.ID, nil
+		}
+	}
+	withResource := func(cluster string) string {
+		return cluster + fmt.Sprintf(`
+resource "camunda_cluster_encryption" "test" {
+  cluster_id     = camunda_cluster.byok.id
+  primary_key_id = %q
+}
+`, fakeKeyOne)
+	}
+	rejected := regexp.MustCompile(`(?s)no\s+customer-managed\s+keys\s+applied`)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				// An External cluster that still waits for its first key.
+				Config: byokClusterConfig(f, "External", false),
+			},
+			{
+				Config:            withResource(byokClusterConfig(f, "External", false)),
+				ResourceName:      "camunda_cluster_encryption.test",
+				ImportState:       true,
+				ImportStateIdFunc: clusterIDOf("camunda_cluster.byok"),
+				ExpectError:       rejected,
+			},
+		},
+	})
+}

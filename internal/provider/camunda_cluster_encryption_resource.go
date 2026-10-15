@@ -67,12 +67,19 @@ func NewCamundaClusterEncryptionResource() resource.Resource {
 			return op.client.WaitClusterEncryptionReady(op.ctx, created.ClusterID.ValueString())
 		},
 		read: func(op *op, prior camundaClusterEncryptionData) (camundaClusterEncryptionData, error) {
-			// An import only sets the id, which is the cluster ID.
+			// An import only sets the id, which is the cluster ID; create has
+			// set cluster_id.
+			imported := prior.ClusterID.IsNull()
 			prior.ClusterID = prior.Id
 
 			found, err := op.client.GetClusterEncryption(op.ctx, prior.Id.ValueString())
 			if err != nil {
 				return prior, err
+			}
+			// There is nothing to manage without applied keys, and importing it
+			// would only make the next plan reject the configured ones.
+			if imported && (found.Type != "External" || found.PrimaryKeyARN == "") {
+				return prior, fmt.Errorf("the cluster has no customer-managed keys applied (encryption %q); only a cluster with External encryption and keys can be imported, so apply the keys with this resource instead", found.Type)
 			}
 
 			prior.PrimaryKeyARN = nullIfEmpty(found.PrimaryKeyARN)
