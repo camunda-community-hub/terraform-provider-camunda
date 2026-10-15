@@ -152,7 +152,11 @@ type consoleState struct {
 	secrets map[string]map[string]string
 	// clusterID -> backups, oldest first
 	backups map[string][]console.BackupDto
-	members map[string]console.Member
+	// Polls left before a new backup stops being in progress. It then reports
+	// failed instead of complete when failBackups is set.
+	backupPolls map[string]int
+	failBackups bool
+	members     map[string]console.Member
 }
 
 // serveConsole registers the Console API on the fake and returns its state.
@@ -165,6 +169,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		clients:         map[string]map[string]console.CreatedClusterClient{},
 		secrets:         map[string]map[string]string{},
 		backups:         map[string][]console.BackupDto{},
+		backupPolls:     map[string]int{},
 		members:         map[string]console.Member{},
 	}
 
@@ -186,6 +191,8 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		"GET /clusters/{id}/secrets":                 s.getSecrets,
 		"DELETE /clusters/{id}/secrets/{secretName}": s.deleteSecret,
 		"GET /clusters/{id}/backups":                 s.listBackups,
+		"POST /clusters/{id}/backups":                s.createBackup,
+		"DELETE /clusters/{id}/backups/{backupId}":   s.deleteBackup,
 		"GET /members":                               s.getMembers,
 		"POST /members/{email}":                      s.updateMember,
 		"DELETE /members/{email}":                    s.deleteMember,
@@ -502,11 +509,69 @@ func (s *consoleState) listBackups(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.cluster(w, clusterID); !ok {
 		return
 	}
+
 	backups := s.backups[clusterID]
+	for i := range backups {
+		backup := &backups[i]
+		if backup.Status != console.BACKUPSTATUS_IN_PROGRESS {
+			continue
+		}
+		if s.backupPolls[backup.Uuid] > 0 {
+			s.backupPolls[backup.Uuid]--
+			continue
+		}
+		status := console.BACKUPSTATUS_COMPLETE
+		if s.failBackups {
+			status = console.BACKUPSTATUS_FAILED
+		}
+		setBackupStatus(backup, status)
+	}
 	if backups == nil {
 		backups = []console.BackupDto{}
 	}
 	writeJSON(s.t, w, backups)
+}
+
+func setBackupStatus(backup *console.BackupDto, status console.BackupStatus) {
+	backup.Status = status
+	backup.ZeebeStatus = status
+	backup.OperateStatus = status
+	backup.TasklistStatus = status
+	backup.OptimizeStatus = status
+	if status == console.BACKUPSTATUS_COMPLETE {
+		backup.Completed = "2026-01-01T00:10:00Z"
+	}
+}
+
+func (s *consoleState) createBackup(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+
+	id := s.newID("backup")
+	backup := console.BackupDto{Uuid: id, Name: id, Created: "2026-01-01T00:00:00Z"}
+	setBackupStatus(&backup, console.BACKUPSTATUS_IN_PROGRESS)
+	s.backups[clusterID] = append(s.backups[clusterID], backup)
+	s.backupPolls[id] = 2
+	writeJSON(s.t, w, backup)
+}
+
+func (s *consoleState) deleteBackup(w http.ResponseWriter, r *http.Request) {
+	clusterID, backupID := r.PathValue("id"), r.PathValue("backupId")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+
+	backups := s.backups[clusterID]
+	index := slices.IndexFunc(backups, func(b console.BackupDto) bool { return b.Uuid == backupID })
+	if index < 0 {
+		notFound(w, "backup")
+		return
+	}
+	deleted := backups[index]
+	s.backups[clusterID] = slices.Delete(backups, index, index+1)
+	writeJSON(s.t, w, deleted)
 }
 
 func (s *consoleState) getMembers(w http.ResponseWriter, r *http.Request) {
