@@ -146,3 +146,19 @@ type auditEvent struct {
 	EntityAttributeValueFrom string
 	EntityAttributeValueTo   string
 }
+
+// backup is a cluster backup. The statuses are the Console's: "In progress",
+// "Failed", "Complete" or "-".
+type backup struct {
+	ID             string
+	Name           string
+	Created        string
+	Completed      string // empty while the backup is running
+	Status         string
+	ZeebeStatus    string
+	OperateStatus  string
+	TasklistStatus string
+	OptimizeStatus string
+	GenerationID   string // empty for legacy backups
+	GenerationName string
+}
