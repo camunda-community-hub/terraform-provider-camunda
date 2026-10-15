@@ -135,6 +135,13 @@ type clusterSettings struct {
 	hardwarePackages float64
 }
 
+// fakeSecureConnectivity is an activated secure connectivity; its endpoint
+// only exists after a few polls.
+type fakeSecureConnectivity struct {
+	principals, regions []string
+	pollsLeft           int
+}
+
 // consoleState is an in-memory Camunda Console.
 type consoleState struct {
 	t  *testing.T
@@ -156,27 +163,35 @@ type consoleState struct {
 	// failed instead of complete when failBackups is set.
 	backupPolls map[string]int
 	// clusterID -> cron expression
-	schedules   map[string]string
-	failBackups bool
-	members     map[string]console.Member
+	schedules map[string]string
+	// clusterID -> secure connectivity activated for the cluster
+	secureConnectivity map[string]*fakeSecureConnectivity
+	// slowSecureConnectivity keeps new secure connectivity provisioning for good.
+	slowSecureConnectivity bool
+	failBackups            bool
+	members                map[string]console.Member
 }
 
 // serveConsole registers the Console API on the fake and returns its state.
 func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 	s := &consoleState{
-		t:               t,
-		clusters:        map[string]*console.Cluster{},
-		clusterSettings: map[string]*clusterSettings{},
-		creating:        map[string]int{},
-		clients:         map[string]map[string]console.CreatedClusterClient{},
-		secrets:         map[string]map[string]string{},
-		backups:         map[string][]console.BackupDto{},
-		backupPolls:     map[string]int{},
-		schedules:       map[string]string{},
-		members:         map[string]console.Member{},
+		t:                  t,
+		clusters:           map[string]*console.Cluster{},
+		clusterSettings:    map[string]*clusterSettings{},
+		creating:           map[string]int{},
+		clients:            map[string]map[string]console.CreatedClusterClient{},
+		secrets:            map[string]map[string]string{},
+		backups:            map[string][]console.BackupDto{},
+		backupPolls:        map[string]int{},
+		schedules:          map[string]string{},
+		secureConnectivity: map[string]*fakeSecureConnectivity{},
+		members:            map[string]console.Member{},
 	}
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
+		"POST /clusters/{id}/secure-connectivity":    s.activateSecureConnectivity,
+		"GET /clusters/{id}/secure-connectivity":     s.getSecureConnectivity,
+		"DELETE /clusters/{id}/secure-connectivity":  s.deactivateSecureConnectivity,
 		"GET /clusters/{id}/backups/schedule":        s.getSchedule,
 		"PUT /clusters/{id}/backups/schedule":        s.putSchedule,
 		"DELETE /clusters/{id}/backups/schedule":     s.deleteSchedule,
@@ -387,6 +402,7 @@ func (s *consoleState) deleteCluster(w http.ResponseWriter, r *http.Request) {
 	delete(s.secrets, id)
 	delete(s.backups, id)
 	delete(s.schedules, id)
+	delete(s.secureConnectivity, id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -615,6 +631,85 @@ func (s *consoleState) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	delete(s.schedules, clusterID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) activateSecureConnectivity(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+	if s.secureConnectivity[clusterID] != nil {
+		http.Error(w, `{"message":"already activated"}`, http.StatusConflict)
+		return
+	}
+
+	var req console.ActivateSecureConnectivityRequest
+	if !s.decode(w, r, &req) {
+		return
+	}
+	s.secureConnectivity[clusterID] = &fakeSecureConnectivity{
+		principals: req.AllowedPrincipals,
+		regions:    req.AllowedRegions,
+		pollsLeft:  2,
+	}
+	if s.slowSecureConnectivity {
+		s.secureConnectivity[clusterID].pollsLeft = 1 << 20
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *consoleState) getSecureConnectivity(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+
+	active := s.secureConnectivity[clusterID]
+	if active == nil || active.pollsLeft > 0 {
+		if active != nil {
+			active.pollsLeft--
+		}
+		writeJSON(s.t, w, map[string]any{"status": map[string]any{}})
+		return
+	}
+
+	writeJSON(s.t, w, map[string]any{"status": map[string]any{
+		"metadata": map[string]any{"name": "sc-" + clusterID, "namespace": "ns", "labels": map[string]any{"orgId": "org"}},
+		"spec": map[string]any{
+			"allowedPrincipals": active.principals,
+			"allowedRegions":    active.regions,
+			"cluster":           map[string]any{"id": clusterID},
+		},
+		"status": map[string]any{
+			"conditions": []map[string]any{{
+				"type": "Ready", "status": "True", "reason": "EndpointReady", "message": "ready",
+				"lastTransitionTime": "2026-01-01T00:00:00Z", "observedGeneration": 1,
+			}},
+			"endpointConnections": []map[string]any{{
+				"state": "available", "serviceId": "vpce-svc-1", "owner": "123456789012",
+				"endpointId": "vpce-1", "creationTimestamp": "2026-01-02T00:00:00Z",
+			}},
+			"endpoint": map[string]any{
+				"privateDnsName": "sc.internal", "region": "eu-west-1", "serviceName": "com.amazonaws.vpce.sc", "type": "Interface",
+			},
+			"endpointConnectionCount": 3,
+			"observedGeneration":      1,
+			"urls":                    map[string]any{},
+		},
+	}})
+}
+
+func (s *consoleState) deactivateSecureConnectivity(w http.ResponseWriter, r *http.Request) {
+	clusterID := r.PathValue("id")
+	if _, ok := s.cluster(w, clusterID); !ok {
+		return
+	}
+	if s.secureConnectivity[clusterID] == nil {
+		http.Error(w, `{"message":"not activated"}`, http.StatusConflict)
+		return
+	}
+	delete(s.secureConnectivity, clusterID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

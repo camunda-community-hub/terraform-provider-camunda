@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -911,4 +912,126 @@ func (c *consoleClient) SetBackupSchedule(ctx context.Context, clusterID, schedu
 func (c *consoleClient) DeleteBackupSchedule(ctx context.Context, clusterID string) error {
 	response, err := c.api.DeleteSchedule(ctx, clusterID).Execute()
 	return apiError(err, response)
+}
+
+// Secure connectivity
+
+// ActivateSecureConnectivity starts creating the cluster's endpoint service;
+// see WaitSecureConnectivityActive. It fails if it is already activated.
+func (c *consoleClient) ActivateSecureConnectivity(ctx context.Context, clusterID string, principals, regions []string) error {
+	response, err := c.api.ActivateSecureConnectivity(ctx, clusterID).
+		ActivateSecureConnectivityRequest(console.ActivateSecureConnectivityRequest{
+			AllowedPrincipals: principals,
+			AllowedRegions:    regions,
+		}).
+		Execute()
+	return apiError(err, response)
+}
+
+// DeactivateSecureConnectivity removes the cluster's endpoint service, or
+// returns errNotFound when it isn't activated or the cluster does not exist.
+func (c *consoleClient) DeactivateSecureConnectivity(ctx context.Context, clusterID string) error {
+	response, err := c.api.DeactivateSecureConnectivity(ctx, clusterID).Execute()
+	err = apiError(err, response)
+	if err != nil && response != nil && response.StatusCode == http.StatusConflict {
+		return fmt.Errorf("%w: secure connectivity of cluster %s is not activated", errNotFound, clusterID)
+	}
+	return err
+}
+
+// GetSecureConnectivity returns the cluster's secure connectivity, or
+// errNotFound when it isn't activated or the cluster does not exist.
+func (c *consoleClient) GetSecureConnectivity(ctx context.Context, clusterID string) (*secureConnectivity, error) {
+	notActivated := fmt.Errorf("%w: secure connectivity of cluster %s is not activated", errNotFound, clusterID)
+
+	found, response, err := c.api.GetSecureConnectivityStatus(ctx, clusterID).Execute()
+	if err != nil {
+		if hasEmptyStatus(err) {
+			return nil, notActivated
+		}
+		return nil, apiError(err, response)
+	}
+
+	dto := found.Status.SecureConnectivityDto
+	if dto == nil {
+		// The generated client falls back to a bare map when the status is not
+		// empty but fails the typed validation; that is a response it can't
+		// read, not a cluster without secure connectivity.
+		if fallback := found.Status.MapmapOfStringAny; fallback != nil && len(*fallback) > 0 {
+			return nil, fmt.Errorf("unable to read the secure connectivity status of cluster %s: it does not match the expected shape", clusterID)
+		}
+		return nil, notActivated
+	}
+
+	result := &secureConnectivity{
+		AllowedPrincipals: dto.Spec.AllowedPrincipals,
+		AllowedRegions:    dto.Spec.AllowedRegions,
+		ServiceName:       dto.Status.Endpoint.ServiceName,
+		PrivateDNSName:    dto.Status.Endpoint.PrivateDnsName,
+		EndpointRegion:    dto.Status.Endpoint.Region,
+		EndpointType:      dto.Status.Endpoint.Type,
+		ConnectionCount:   int64(dto.Status.EndpointConnectionCount),
+	}
+	for _, condition := range dto.Status.Conditions {
+		result.Conditions = append(result.Conditions, secureConnectivityCondition{
+			Type:               condition.Type,
+			Status:             condition.Status,
+			Reason:             condition.Reason,
+			Message:            condition.Message,
+			LastTransitionTime: condition.LastTransitionTime,
+		})
+	}
+	for _, connection := range dto.Status.EndpointConnections {
+		result.Connections = append(result.Connections, secureConnectivityConnection{
+			State:             connection.State,
+			ServiceID:         connection.ServiceId,
+			Owner:             connection.Owner,
+			EndpointID:        connection.EndpointId,
+			CreationTimestamp: connection.CreationTimestamp,
+		})
+	}
+	return result, nil
+}
+
+// hasEmptyStatus reports whether err is the generated client failing to decode
+// the status the Console returns without secure connectivity, `{"status": {}}`:
+// it matches neither variant of the status the spec declares.
+func hasEmptyStatus(err error) bool {
+	var openAPIErr *console.GenericOpenAPIError
+	if !errors.As(err, &openAPIErr) {
+		return false
+	}
+
+	var body struct {
+		Status map[string]json.RawMessage `json:"status"`
+	}
+	return json.Unmarshal(openAPIErr.Body(), &body) == nil && body.Status != nil && len(body.Status) == 0
+}
+
+// WaitSecureConnectivityActive blocks until the Console has created the
+// cluster's endpoint service.
+func (c *consoleClient) WaitSecureConnectivityActive(ctx context.Context, clusterID string) error {
+	const pending, active = "Pending", "Active"
+
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{pending},
+		target:  []string{active},
+		refresh: func() (string, error) {
+			found, err := c.GetSecureConnectivity(ctx, clusterID)
+			switch {
+			case errors.Is(err, errNotFound):
+				// Not visible yet right after activating it, unless the
+				// cluster is gone and it never will be.
+				if _, clusterErr := c.getAPICluster(ctx, clusterID); clusterErr != nil {
+					return "", clusterErr
+				}
+				return pending, nil
+			case err != nil:
+				return "", err
+			case found.ServiceName == "":
+				return pending, nil
+			}
+			return active, nil
+		},
+	})
 }
