@@ -887,3 +887,28 @@ func (c *consoleClient) WaitBackupComplete(ctx context.Context, clusterID, backu
 		},
 	})
 }
+
+// GetBackupSchedule returns the cron expression (UTC) backups are taken on, or
+// errNotFound when the cluster has no schedule or does not exist.
+func (c *consoleClient) GetBackupSchedule(ctx context.Context, clusterID string) (string, error) {
+	found, response, err := c.api.GetSchedule(ctx, clusterID).Execute()
+	if err != nil {
+		return "", apiError(err, response)
+	}
+	return found.Schedule, nil
+}
+
+// SetBackupSchedule creates or replaces the cluster's backup schedule. The
+// expression is a five-field cron expression in UTC.
+func (c *consoleClient) SetBackupSchedule(ctx context.Context, clusterID, schedule string) error {
+	_, response, err := c.api.UpdateSchedule(ctx, clusterID).
+		BackupScheduleBody(console.BackupScheduleBody{Schedule: schedule}).
+		Execute()
+	return apiError(err, response)
+}
+
+// DeleteBackupSchedule stops scheduled backups; backups already taken are kept.
+func (c *consoleClient) DeleteBackupSchedule(ctx context.Context, clusterID string) error {
+	response, err := c.api.DeleteSchedule(ctx, clusterID).Execute()
+	return apiError(err, response)
+}
