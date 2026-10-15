@@ -115,17 +115,22 @@ func clusterWithStatus(id string, status console.ClusterComponentStatus) console
 
 // Parameters offered by the in-memory Console.
 const (
-	fakeChannelID    = "channel-stable"
-	fakeGeneration1  = "gen-1"
-	fakeGeneration2  = "gen-2"
-	fakeTrialPlanID  = "plan-trial"
-	fakeProdPlanID   = "plan-production"
-	fakeRegionID     = "region-belgium"
-	fakeChannelName  = "Stable"
-	fakeTrialPlan    = "Trial Package"
-	fakeProdPlan     = "Production"
-	fakeRegionName   = "Belgium, Europe (europe-west1)"
-	fakeZeebeAddress = "zeebe.example.com:443"
+	fakeChannelID   = "channel-stable"
+	fakeGeneration1 = "gen-1"
+	fakeGeneration2 = "gen-2"
+	fakeTrialPlanID = "plan-trial"
+	fakeProdPlanID  = "plan-production"
+	fakeRegionID    = "region-belgium"
+	fakeChannelName = "Stable"
+	fakeTrialPlan   = "Trial Package"
+	fakeProdPlan    = "Production"
+	fakeRegionName  = "Belgium, Europe (europe-west1)"
+	// AWS regions, which customer-managed encryption needs.
+	fakeAWSRegionID     = "region-frankfurt"
+	fakeAWSRegionName   = "Frankfurt, Europe (eu-central-1)"
+	fakeAWSBackupRegion = "region-ireland"
+	fakeAWSBackupName   = "Ireland, Europe (eu-west-1)"
+	fakeZeebeAddress    = "zeebe.example.com:443"
 )
 
 // clusterSettings are the cluster attributes the Console accepts but never
@@ -164,6 +169,10 @@ type consoleState struct {
 	backupPolls map[string]int
 	// clusterID -> cron expression
 	schedules map[string]string
+	// clusterID -> polls left before BYOK encryption is ready
+	encryptionPolls map[string]int
+	// slowEncryption keeps newly supplied keys from ever becoming ready.
+	slowEncryption bool
 	// clusterID -> polls left before external monitoring is active; absent when it is not activated
 	monitoringPolls map[string]int
 	// slowMonitoring keeps new external monitoring provisioning for good.
@@ -191,6 +200,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		backups:             map[string][]console.BackupDto{},
 		backupPolls:         map[string]int{},
 		schedules:           map[string]string{},
+		encryptionPolls:     map[string]int{},
 		monitoringPolls:     map[string]int{},
 		monitoringClients:   map[string][]console.ByomClientDto{},
 		monitoringPasswords: map[string]string{},
@@ -199,6 +209,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 	}
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
+		"PUT /clusters/{id}/encryption":                            s.updateClusterEncryption,
 		"POST /clusters/{id}/monitoring":                           s.activateMonitoring,
 		"DELETE /clusters/{id}/monitoring":                         s.deactivateMonitoring,
 		"GET /clusters/{id}/monitoring/clients":                    s.listMonitoringClients,
@@ -296,6 +307,8 @@ func (s *consoleState) getParameters(w http.ResponseWriter, r *http.Request) {
 		},
 		Regions: []console.ParametersRegionsInner{
 			{Uuid: fakeRegionID, Name: fakeRegionName, Provider: "gcp"},
+			{Uuid: fakeAWSRegionID, Name: fakeAWSRegionName, Provider: "aws"},
+			{Uuid: fakeAWSBackupRegion, Name: fakeAWSBackupName, Provider: "aws"},
 		},
 	})
 }
@@ -346,6 +359,10 @@ func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
 	cluster := s.clusters[id]
 	if req.Encryption != nil {
 		cluster.Encryption.Type = *req.Encryption
+		if *req.Encryption == console.CLUSTERENCRYPTIONKEY_EXTERNAL {
+			status := console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_SUPPLIED
+			cluster.Encryption.Status = &status
+		}
 	}
 	if req.BackupRegionId != nil {
 		cluster.BackupRegion = &console.ClusterBackupRegion{Uuid: *req.BackupRegionId}
@@ -377,6 +394,14 @@ func (s *consoleState) getCluster(w http.ResponseWriter, r *http.Request) {
 		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_WAITING_FOR_INPUT
 	} else {
 		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_HEALTHY
+	}
+	if e := cluster.Encryption; e != nil && e.Status != nil && *e.Status == console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_READY {
+		if s.encryptionPolls[id] > 0 {
+			s.encryptionPolls[id]--
+		} else {
+			ready := console.ENCRYPTIONSTATUS_READY
+			e.Status = &ready
+		}
 	}
 	writeJSON(s.t, w, cluster)
 }
@@ -838,6 +863,59 @@ func (s *consoleState) writeMonitoringClient(w http.ResponseWriter, client conso
 	})
 }
 
+func (s *consoleState) updateClusterEncryption(w http.ResponseWriter, r *http.Request) {
+	cluster, ok := s.cluster(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if cluster.Encryption == nil || cluster.Encryption.Type != console.CLUSTERENCRYPTIONKEY_EXTERNAL {
+		http.Error(w, `{"message":"cluster is not configured for external encryption"}`, http.StatusConflict)
+		return
+	}
+
+	if cluster.Encryption.PrimaryKeyArn != nil {
+		http.Error(w, `{"message":"keys are already applied and can't be changed"}`, http.StatusConflict)
+		return
+	}
+
+	var req console.UpdateClusterEncryptionBody
+	if !s.decode(w, r, &req) {
+		return
+	}
+	// The key must live in the cluster's AWS region and, for a dual-region
+	// cluster only, a second one in its backup region.
+	awsRegions := map[string]string{fakeAWSRegionID: "eu-central-1", fakeAWSBackupRegion: "eu-west-1"}
+	primaryRegion, aws := awsRegions[cluster.Region.Uuid]
+	if !aws {
+		http.Error(w, `{"message":"external encryption is only available on AWS"}`, http.StatusForbidden)
+		return
+	}
+	if keyRegion(req.PrimaryEncryptionKeyId) != primaryRegion {
+		http.Error(w, `{"message":"primary key ARN is invalid or not in the cluster's region"}`, http.StatusBadRequest)
+		return
+	}
+	switch {
+	case cluster.BackupRegion != nil:
+		if req.SecondaryEncryptionKeyId == nil || *req.SecondaryEncryptionKeyId == req.PrimaryEncryptionKeyId ||
+			keyRegion(*req.SecondaryEncryptionKeyId) != awsRegions[cluster.BackupRegion.Uuid] {
+			http.Error(w, `{"message":"a dual-region cluster needs a distinct secondary key in its backup region"}`, http.StatusBadRequest)
+			return
+		}
+	case req.SecondaryEncryptionKeyId != nil:
+		http.Error(w, `{"message":"a single-region cluster takes no secondary key"}`, http.StatusBadRequest)
+		return
+	}
+	cluster.Encryption.PrimaryKeyArn = &req.PrimaryEncryptionKeyId
+	cluster.Encryption.SecondaryKeyArn = req.SecondaryEncryptionKeyId
+	notReady := console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_READY
+	cluster.Encryption.Status = &notReady
+	s.encryptionPolls[cluster.Uuid] = 2
+	if s.slowEncryption {
+		s.encryptionPolls[cluster.Uuid] = 1 << 20
+	}
+	writeJSON(s.t, w, cluster)
+}
+
 func (s *consoleState) getMembers(w http.ResponseWriter, r *http.Request) {
 	members := []console.Member{}
 	for _, member := range s.members {
@@ -883,4 +961,13 @@ func (s *consoleState) deleteMember(w http.ResponseWriter, r *http.Request) {
 // like the real API, refuses to change or remove.
 func (s *consoleState) isOwner(email string) bool {
 	return slices.Contains(s.members[email].Roles, console.ORGANIZATIONROLE_OWNER)
+}
+
+// keyRegion is the region segment of an AWS KMS key ARN, or "" if it isn't one.
+func keyRegion(arn string) string {
+	parts := strings.Split(arn, ":")
+	if len(parts) < 6 || parts[0] != "arn" || parts[2] != "kms" {
+		return ""
+	}
+	return parts[3]
 }

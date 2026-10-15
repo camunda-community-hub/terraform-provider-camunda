@@ -315,7 +315,7 @@ func TestClusterResourceReportsEncryptionKeys(t *testing.T) {
 				Config: config,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption", "External"),
-					resource.TestCheckNoResourceAttr("camunda_cluster.settings", "encryption_status"),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption_status", "ExternalEncryptionKeyNotSupplied"),
 					resource.TestCheckNoResourceAttr("camunda_cluster.settings", "encryption_primary_key_arn"),
 					resource.TestCheckNoResourceAttr("camunda_cluster.settings", "encryption_secondary_key_arn"),
 				),

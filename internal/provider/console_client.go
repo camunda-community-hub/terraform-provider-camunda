@@ -1245,3 +1245,59 @@ func newCreatedMonitoringClient(created *console.CreateMonitoringClient200Respon
 		Password: created.Password,
 	}
 }
+
+// Encryption
+
+// GetClusterEncryption returns the cluster's encryption, or errNotFound when
+// the cluster does not exist.
+func (c *consoleClient) GetClusterEncryption(ctx context.Context, clusterID string) (*clusterEncryption, error) {
+	found, err := c.getAPICluster(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &clusterEncryption{}
+	if e := found.Encryption; e != nil {
+		result.Type = string(e.Type)
+		result.PrimaryKeyARN = e.GetPrimaryKeyArn()
+		result.SecondaryKeyARN = e.GetSecondaryKeyArn()
+		result.Status = string(e.GetStatus())
+	}
+	return result, nil
+}
+
+// SetClusterEncryptionKeys configures or rotates the customer-managed keys of
+// a cluster created with the "External" encryption type. The secondary key is
+// for dual-region clusters only; empty means none.
+func (c *consoleClient) SetClusterEncryptionKeys(ctx context.Context, clusterID, primaryKeyID, secondaryKeyID string) error {
+	body := console.UpdateClusterEncryptionBody{PrimaryEncryptionKeyId: primaryKeyID}
+	if secondaryKeyID != "" {
+		body.SecondaryEncryptionKeyId = &secondaryKeyID
+	}
+
+	_, response, err := c.api.UpdateClusterEncryption(ctx, clusterID).
+		UpdateClusterEncryptionBody(body).
+		Execute()
+	return apiError(err, response)
+}
+
+// WaitClusterEncryptionReady blocks until the cluster reports its encryption
+// as ready. A provider or creation error ends the wait with an error.
+func (c *consoleClient) WaitClusterEncryptionReady(ctx context.Context, clusterID string) error {
+	return c.awaitStatus(ctx, statusWait{
+		pending: []string{
+			"", // not reported yet
+			string(console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_SUPPLIED),
+			string(console.ENCRYPTIONSTATUS_EXTERNAL_ENCRYPTION_KEY_NOT_READY),
+			string(console.ENCRYPTIONSTATUS_ENCRYPTED_STORAGE_NOT_READY),
+		},
+		target: []string{string(console.ENCRYPTIONSTATUS_READY)},
+		refresh: func() (string, error) {
+			found, err := c.GetClusterEncryption(ctx, clusterID)
+			if err != nil {
+				return "", err
+			}
+			return found.Status, nil
+		},
+	})
+}
