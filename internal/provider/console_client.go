@@ -182,6 +182,9 @@ func (c *consoleClient) ListClusters(ctx context.Context) ([]cluster, error) {
 		return nil, apiError(err, response)
 	}
 
+	// The Console doesn't order the list, and Terraform keeps it in order.
+	slices.SortFunc(listed, func(a, b console.Cluster) int { return strings.Compare(a.Uuid, b.Uuid) })
+
 	clusters := make([]cluster, 0, len(listed))
 	for i := range listed {
 		clusters = append(clusters, *newCluster(&listed[i]))
@@ -204,6 +207,7 @@ func newCluster(found *console.Cluster) *cluster {
 		Created:      found.Created,
 		Labels:       found.Labels,
 		Status:       string(found.Status.Ready),
+		IPAllowlist:  ipAllowlistOf(found),
 		Links: clusterLinks{
 			Zeebe:      found.Links.GetZeebe(),
 			Operate:    found.Links.GetOperate(),
@@ -344,6 +348,11 @@ func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([
 		return nil, err
 	}
 
+	return ipAllowlistOf(found), nil
+}
+
+// ipAllowlistOf returns the cluster's IP allowlist, never nil.
+func ipAllowlistOf(found *console.Cluster) []allowlistEntry {
 	listed := found.Ipallowlist
 	if listed == nil {
 		// Older API responses only carry the deprecated field.
@@ -354,7 +363,7 @@ func (c *consoleClient) GetIPAllowlist(ctx context.Context, clusterID string) ([
 	for _, entry := range listed {
 		entries = append(entries, allowlistEntry{IP: entry.Ip, Description: entry.Description})
 	}
-	return entries, nil
+	return entries
 }
 
 // SetIPAllowlist replaces the cluster's IP allowlist; an empty list removes it.

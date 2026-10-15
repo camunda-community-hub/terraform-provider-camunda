@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -169,6 +170,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 		"GET /meta/ip-ranges":                        s.getIPRanges,
 		"GET /activity/json":                         s.getAuditLog,
 		"POST /clusters":                             s.createCluster,
+		"GET /clusters":                              s.listClusters,
 		"GET /clusters/{id}":                         s.getCluster,
 		"PATCH /clusters/{id}":                       s.updateCluster,
 		"DELETE /clusters/{id}":                      s.deleteCluster,
@@ -302,6 +304,15 @@ func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
 	}
 	s.creating[id] = 2
 	writeJSON(s.t, w, console.CreateCluster200Response{ClusterId: id})
+}
+
+func (s *consoleState) listClusters(w http.ResponseWriter, r *http.Request) {
+	clusters := []console.Cluster{}
+	for _, cluster := range s.clusters {
+		clusters = append(clusters, *cluster)
+	}
+	slices.SortFunc(clusters, func(a, b console.Cluster) int { return strings.Compare(a.Uuid, b.Uuid) })
+	writeJSON(s.t, w, clusters)
 }
 
 func (s *consoleState) getCluster(w http.ResponseWriter, r *http.Request) {

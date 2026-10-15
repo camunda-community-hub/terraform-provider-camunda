@@ -334,16 +334,7 @@ func (d *camundaClusterData) setFromAPI(cl *cluster) {
 	d.Created = types.StringValue(cl.Created.Format(time.RFC3339))
 	d.Labels = stringList(cl.Labels)
 	d.Status = types.StringValue(cl.Status)
-	d.Links = clusterLinksModel{
-		Zeebe:      types.StringValue(cl.Links.Zeebe),
-		Operate:    types.StringValue(cl.Links.Operate),
-		Tasklist:   types.StringValue(cl.Links.Tasklist),
-		Optimize:   types.StringValue(cl.Links.Optimize),
-		Connectors: types.StringValue(cl.Links.Connectors),
-		Identity:   types.StringValue(cl.Links.Identity),
-		Console:    types.StringValue(cl.Links.Console),
-		OAuth:      types.StringValue(cl.Links.OAuth),
-	}.object()
+	d.Links = newClusterLinksModel(cl.Links).object()
 
 	// With auto_update the server moves the cluster to newer generations, so
 	// the configured generation is only where it started; keep it instead of
@@ -362,6 +353,19 @@ func nullIfEmpty(value string) types.String {
 	return types.StringValue(value)
 }
 
+func newClusterLinksModel(links clusterLinks) *clusterLinksModel {
+	return &clusterLinksModel{
+		Zeebe:      types.StringValue(links.Zeebe),
+		Operate:    types.StringValue(links.Operate),
+		Tasklist:   types.StringValue(links.Tasklist),
+		Optimize:   types.StringValue(links.Optimize),
+		Connectors: types.StringValue(links.Connectors),
+		Identity:   types.StringValue(links.Identity),
+		Console:    types.StringValue(links.Console),
+		OAuth:      types.StringValue(links.OAuth),
+	}
+}
+
 func (clusterLinksModel) attrTypes() map[string]attr.Type {
 	attrTypes := map[string]attr.Type{}
 	for _, name := range []string{"zeebe", "operate", "tasklist", "optimize", "connectors", "identity", "console", "oauth"} {
@@ -370,7 +374,7 @@ func (clusterLinksModel) attrTypes() map[string]attr.Type {
 	return attrTypes
 }
 
-func (m clusterLinksModel) object() types.Object {
+func (m *clusterLinksModel) object() types.Object {
 	object, diags := types.ObjectValueFrom(context.Background(), m.attrTypes(), m)
 	if diags.HasError() {
 		// Unreachable: attrTypes mirrors the struct's tags.
