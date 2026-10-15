@@ -552,3 +552,45 @@ func TestConsoleClientRefusesToChangeTheOwner(t *testing.T) {
 		t.Fatalf("DeleteMember: expected errOwnerUnchangeable, got %v", err)
 	}
 }
+
+func TestConsoleClientAwaitStatus(t *testing.T) {
+	client := newFakeConsole(t).client(t)
+	wait := func(statuses ...string) (int, error) {
+		polls := 0
+		err := client.awaitStatus(context.Background(), statusWait{
+			pending: []string{"In progress"},
+			target:  []string{"Complete"},
+			refresh: func() (string, error) {
+				status := statuses[min(polls, len(statuses)-1)]
+				polls++
+				return status, nil
+			},
+		})
+		return polls, err
+	}
+
+	t.Run("returns once a target status shows up", func(t *testing.T) {
+		polls, err := wait("In progress", "In progress", "Complete")
+		if err != nil || polls != 3 {
+			t.Fatalf("awaitStatus = %v after %d polls, want success after 3", err, polls)
+		}
+	})
+
+	t.Run("names a status that is neither pending nor target", func(t *testing.T) {
+		_, err := wait("In progress", "Failed")
+		if err == nil || !strings.Contains(err.Error(), "Failed") {
+			t.Fatalf("expected an error naming the status, got %v", err)
+		}
+	})
+
+	t.Run("passes refresh errors on", func(t *testing.T) {
+		err := client.awaitStatus(context.Background(), statusWait{
+			pending: []string{"In progress"},
+			target:  []string{"Complete"},
+			refresh: func() (string, error) { return "", fmt.Errorf("%w: backup", errNotFound) },
+		})
+		if !errors.Is(err, errNotFound) {
+			t.Fatalf("expected errNotFound, got %v", err)
+		}
+	})
+}
