@@ -157,6 +157,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 	routes := map[string]func(http.ResponseWriter, *http.Request){
 		"GET /clusters/parameters":                   s.getParameters,
 		"GET /meta/ip-ranges":                        s.getIPRanges,
+		"GET /activity/json":                         s.getAuditLog,
 		"POST /clusters":                             s.createCluster,
 		"GET /clusters/{id}":                         s.getCluster,
 		"PATCH /clusters/{id}":                       s.updateCluster,
@@ -241,6 +242,15 @@ func (s *consoleState) getParameters(w http.ResponseWriter, r *http.Request) {
 
 func (s *consoleState) getIPRanges(w http.ResponseWriter, r *http.Request) {
 	writeJSON(s.t, w, console.MetaDto{WebModeler: []string{"10.0.0.0/24", "10.0.1.0/24"}})
+}
+
+func (s *consoleState) getAuditLog(w http.ResponseWriter, r *http.Request) {
+	timestamp := 1700000000000.0
+	parent, parentID := "cluster", "c1"
+	writeJSON(s.t, w, []console.AuditDto{
+		{Service: "console", OrgId: "org", Audit: "Cluster created", AuditType: "c", Entity: "cluster", EntityId: "c1", UserId: "u1", Timestamp: &timestamp},
+		{Service: "console", OrgId: "org", Audit: "Client created", AuditType: "c", Entity: "client", EntityId: "k1", ParentEntity: &parent, ParentEntityId: &parentID, UserId: "u2"},
+	})
 }
 
 func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {

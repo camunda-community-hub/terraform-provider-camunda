@@ -562,3 +562,37 @@ func (c *consoleClient) GetIPRanges(ctx context.Context) (*ipRanges, error) {
 	}
 	return &ipRanges{WebModeler: meta.WebModeler}, nil
 }
+
+// Activity
+
+// GetAuditLog returns the organization's activity events.
+func (c *consoleClient) GetAuditLog(ctx context.Context) ([]auditEvent, error) {
+	events, response, err := c.api.GetJson(ctx).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	result := make([]auditEvent, 0, len(events))
+	for _, e := range events {
+		var timestamp *int64
+		if e.Timestamp != nil {
+			millis := int64(*e.Timestamp)
+			timestamp = &millis
+		}
+		result = append(result, auditEvent{
+			Service:                  e.Service,
+			Audit:                    e.Audit,
+			AuditType:                e.AuditType,
+			Timestamp:                timestamp,
+			UserID:                   e.UserId,
+			Entity:                   e.Entity,
+			EntityID:                 e.EntityId,
+			ParentEntity:             e.GetParentEntity(),
+			ParentEntityID:           e.GetParentEntityId(),
+			EntityAttribute:          e.GetEntityAttribute(),
+			EntityAttributeValueFrom: e.GetEntityAttributeValueFrom(),
+			EntityAttributeValueTo:   e.GetEntityAttributeValueTo(),
+		})
+	}
+	return result, nil
+}
