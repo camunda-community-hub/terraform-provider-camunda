@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -321,6 +323,34 @@ func (c *consoleClient) GetClusterClient(ctx context.Context, clusterID, clientI
 	return nil, fmt.Errorf("%w: client %q in cluster %s", errNotFound, clientID, clusterID)
 }
 
+// ListClusterClients returns the cluster's clients with their scopes and
+// connection details, or errNotFound when the cluster does not exist.
+func (c *consoleClient) ListClusterClients(ctx context.Context, clusterID string) ([]clusterClient, error) {
+	listed, response, err := c.api.GetClients(ctx, clusterID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+
+	// The Console doesn't order the list, and Terraform keeps it in order.
+	slices.SortFunc(listed, func(a, b console.ClusterClient) int { return strings.Compare(a.ClientId, b.ClientId) })
+
+	clients := make([]clusterClient, 0, len(listed))
+	for _, entry := range listed {
+		details, response, err := c.api.GetClient(ctx, clusterID, entry.ClientId).Execute()
+		if err != nil {
+			return nil, apiError(err, response)
+		}
+		clients = append(clients, clusterClient{
+			ClientID:               details.ZEEBE_CLIENT_ID,
+			Name:                   details.Name,
+			Scopes:                 entry.Permissions,
+			ZeebeAddress:           details.ZEEBE_ADDRESS,
+			AuthorizationServerURL: details.ZEEBE_AUTHORIZATION_SERVER_URL,
+		})
+	}
+	return clients, nil
+}
+
 func (c *consoleClient) DeleteClusterClient(ctx context.Context, clusterID, clientID string) error {
 	response, err := c.api.DeleteClient(ctx, clusterID, clientID).Execute()
 	return apiError(err, response)
@@ -348,6 +378,17 @@ func (c *consoleClient) GetSecret(ctx context.Context, clusterID, name string) (
 		return "", fmt.Errorf("%w: connector secret %q in cluster %s", errNotFound, name, clusterID)
 	}
 	return value, nil
+}
+
+// ListSecretNames returns the names of the cluster's connector secrets, or
+// errNotFound when the cluster does not exist. The values are deliberately
+// not returned.
+func (c *consoleClient) ListSecretNames(ctx context.Context, clusterID string) ([]string, error) {
+	secrets, response, err := c.api.GetSecrets(ctx, clusterID).Execute()
+	if err != nil {
+		return nil, apiError(err, response)
+	}
+	return slices.Sorted(maps.Keys(secrets)), nil
 }
 
 func (c *consoleClient) DeleteSecret(ctx context.Context, clusterID, name string) error {
