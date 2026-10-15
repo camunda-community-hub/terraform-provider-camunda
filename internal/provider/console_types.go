@@ -67,3 +67,8 @@ type namedID struct {
 	ID   string
 	Name string
 }
+
+// ipRanges are the IP ranges Camunda's services connect from.
+type ipRanges struct {
+	WebModeler []string
+}

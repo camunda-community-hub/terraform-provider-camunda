@@ -156,6 +156,7 @@ func (f *fakeConsole) serveConsole(t *testing.T) *consoleState {
 
 	routes := map[string]func(http.ResponseWriter, *http.Request){
 		"GET /clusters/parameters":                   s.getParameters,
+		"GET /meta/ip-ranges":                        s.getIPRanges,
 		"POST /clusters":                             s.createCluster,
 		"GET /clusters/{id}":                         s.getCluster,
 		"PATCH /clusters/{id}":                       s.updateCluster,
@@ -236,6 +237,10 @@ func (s *consoleState) getParameters(w http.ResponseWriter, r *http.Request) {
 			{Uuid: fakeRegionID, Name: fakeRegionName, Provider: "gcp"},
 		},
 	})
+}
+
+func (s *consoleState) getIPRanges(w http.ResponseWriter, r *http.Request) {
+	writeJSON(s.t, w, console.MetaDto{WebModeler: []string{"10.0.0.0/24", "10.0.1.0/24"}})
 }
 
 func (s *consoleState) createCluster(w http.ResponseWriter, r *http.Request) {
