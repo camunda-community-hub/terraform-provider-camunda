@@ -41,8 +41,14 @@ type createdClusterClient struct {
 // member is an organization member.
 type member struct {
 	Email string
+	Name  string
+	// InvitePending is set while the member hasn't accepted the invitation.
+	InvitePending bool
 	// Roles holds only the roles the API can assign.
 	Roles []string
+	// AllRoles holds every role the member has, including those the API can't
+	// assign, such as owner.
+	AllRoles []string
 	// Owner is set for the organization owner, whom the API can't change.
 	Owner bool
 }
