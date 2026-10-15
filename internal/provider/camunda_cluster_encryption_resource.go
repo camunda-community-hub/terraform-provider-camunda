@@ -32,7 +32,8 @@ func NewCamundaClusterEncryptionResource() resource.Resource {
 		describe: func(d camundaClusterEncryptionData) string { return "cluster " + d.ClusterID.ValueString() },
 		create: func(op *op, plan camundaClusterEncryptionData) (camundaClusterEncryptionData, error) {
 			clusterID := plan.ClusterID.ValueString()
-			if err := op.client.WaitClusterHealthy(op.ctx, clusterID); err != nil {
+			// The cluster waits for these very keys, so it isn't healthy yet.
+			if err := op.client.WaitClusterSettled(op.ctx, clusterID); err != nil {
 				return plan, err
 			}
 
