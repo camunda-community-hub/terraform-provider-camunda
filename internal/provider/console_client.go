@@ -1124,8 +1124,11 @@ func (c *consoleClient) getMonitoring(ctx context.Context, clusterID string) (cl
 	// The generated client falls back to a bare map when the status is not
 	// empty but fails the typed validation; that is a response it can't read,
 	// not inactive monitoring.
+	// A null status decodes to neither variant. Only the explicit `{}` means
+	// inactive, and that never gets here: the generated client rejects it, see
+	// emptyStatusBody.
 	fallback := found.Status.MapmapOfStringAny
-	unreadable = status == nil && fallback != nil && len(*fallback) > 0
+	unreadable = status == nil && (fallback == nil || len(*fallback) > 0)
 
 	// A null client list is as malformed here as under an empty status; an
 	// explicit empty list decodes to a non-nil slice.

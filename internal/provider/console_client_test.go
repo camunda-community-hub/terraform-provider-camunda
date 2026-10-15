@@ -867,3 +867,21 @@ func TestConsoleClientRejectsAnActiveMonitoringResponseWithoutAClientList(t *tes
 		}
 	})
 }
+
+func TestConsoleClientMonitoringReportsANullStatusAsUnreadable(t *testing.T) {
+	f := newFakeConsole(t)
+	f.mux.HandleFunc("GET /clusters/{id}/monitoring/clients", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"clients":[],"status":null}`)
+	})
+	client := f.client(t)
+
+	// Reading it as inactive would make a refresh drop an active monitoring.
+	if _, err := client.GetMonitoring(context.Background(), "c1"); err == nil || errors.Is(err, errNotFound) {
+		t.Fatalf("GetMonitoring = %v, want an error other than errNotFound", err)
+	}
+	// The clients are still listed: only the status is unreadable.
+	if _, err := client.ListMonitoringClients(context.Background(), "c1"); err != nil {
+		t.Fatalf("ListMonitoringClients: %v", err)
+	}
+}
