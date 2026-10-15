@@ -360,3 +360,28 @@ func TestClusterResourceRejectsEmptyBackupRegion(t *testing.T) {
 		},
 	})
 }
+
+// A cluster with external encryption keys waits for them instead of becoming
+// healthy, so creating it must not wait for a health it can't reach yet.
+func TestClusterResourceWithExternalEncryptionWaitsForKeysInsteadOfHealth(t *testing.T) {
+	f := newFakeConsole(t)
+	f.serveConsole(t)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: f.providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: clusterWithSettingsConfig(f, `encryption = "External"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "encryption", "External"),
+					resource.TestCheckResourceAttr("camunda_cluster.settings", "status", "WaitingForInput"),
+				),
+			},
+			{
+				// Nothing to change while it waits.
+				Config:   clusterWithSettingsConfig(f, `encryption = "External"`),
+				PlanOnly: true,
+			},
+		},
+	})
+}

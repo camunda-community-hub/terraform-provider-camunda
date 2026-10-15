@@ -313,6 +313,9 @@ func (s *consoleState) getCluster(w http.ResponseWriter, r *http.Request) {
 
 	if s.creating[id] > 0 {
 		s.creating[id]--
+	} else if e := cluster.Encryption; e != nil && e.Type == console.CLUSTERENCRYPTIONKEY_EXTERNAL && e.PrimaryKeyArn == nil {
+		// The cluster waits for its external keys.
+		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_WAITING_FOR_INPUT
 	} else {
 		cluster.Status.Ready = console.CLUSTERCOMPONENTSTATUS_HEALTHY
 	}

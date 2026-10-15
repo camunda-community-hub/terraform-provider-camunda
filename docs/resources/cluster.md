@@ -74,7 +74,7 @@ output "zeebe_url" {
 - `auto_update` (Boolean) Auto Update. Changing it replaces the cluster.
 - `backup_region` (String) ID of the region that stores the cluster's backups, see the `camunda_region` data source. Only available if the sales plan supports it (Enterprise). Changing it replaces the cluster.
 - `description` (String) Description of the cluster (1 to 150 characters). Remove the attribute to clear it.
-- `encryption` (String) Type of the key that encrypts the cluster's data: `Software`, `Hardware`, `Provider` or `External`. The Console defaults to `Provider`. Changing it replaces the cluster.
+- `encryption` (String) Type of the key that encrypts the cluster's data: `Software`, `Hardware`, `Provider` or `External`. The Console defaults to `Provider`. Changing it replaces the cluster. A cluster with `External` keys stays at `WaitingForInput` until its keys are supplied with `camunda_cluster_encryption`; creating it doesn't wait for it to become healthy.
 - `hardware_packages` (Number) Number of hardware packages allocated to the cluster. Only available on request and for Advanced offering cluster types; the Console defaults to 1. Can be changed in place. The Console doesn't report it back, so changes made outside Terraform aren't detected.
 - `stage_label` (String) Stage the cluster serves, one of `dev`, `test`, `stage` or `prod`. Can be changed in place. The Console doesn't report it back, so changes made outside Terraform aren't detected, and removing the attribute only stops Terraform from managing it.
 

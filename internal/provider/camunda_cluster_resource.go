@@ -67,6 +67,12 @@ func NewCamundaClusterResource() resource.Resource {
 		create:   createCluster,
 		// Creating a cluster takes some time, wait until it's marked healthy.
 		awaitReady: func(op *op, created camundaClusterData) error {
+			// A cluster with external encryption keys can't become healthy
+			// before its keys are supplied, see camunda_cluster_encryption: it
+			// waits for them, and creation is done.
+			if created.Encryption.ValueString() == "External" {
+				return op.client.WaitClusterSettled(op.ctx, created.Id.ValueString())
+			}
 			return op.client.WaitClusterHealthy(op.ctx, created.Id.ValueString())
 		},
 		read:   readCluster,
@@ -165,7 +171,7 @@ func clusterSchema() schema.Schema {
 				},
 			},
 			"encryption": schema.StringAttribute{
-				MarkdownDescription: "Type of the key that encrypts the cluster's data: `Software`, `Hardware`, `Provider` or `External`. The Console defaults to `Provider`. Changing it replaces the cluster.",
+				MarkdownDescription: "Type of the key that encrypts the cluster's data: `Software`, `Hardware`, `Provider` or `External`. The Console defaults to `Provider`. Changing it replaces the cluster. A cluster with `External` keys stays at `WaitingForInput` until its keys are supplied with `camunda_cluster_encryption`; creating it doesn't wait for it to become healthy.",
 				Optional:            true,
 				Computed:            true,
 				Validators:          []validator.String{stringvalidator.OneOf("Software", "Hardware", "Provider", "External")},
@@ -249,11 +255,16 @@ func createCluster(op *op, plan camundaClusterData) (camundaClusterData, error) 
 	// The plan state is saved before waiting for the cluster, so nothing may
 	// be unknown; the read after the wait fills these in.
 	for _, attr := range []*types.String{
-		&plan.BackupRegion, &plan.Encryption, &plan.EncryptionStatus,
-		&plan.EncryptionPrimaryKeyARN, &plan.EncryptionSecondaryKeyARN,
+		&plan.EncryptionStatus, &plan.EncryptionPrimaryKeyARN, &plan.EncryptionSecondaryKeyARN,
 		&plan.OwnerID, &plan.Created, &plan.Status,
 	} {
 		*attr = types.StringNull()
+	}
+	// Optional and computed: what was configured stays.
+	for _, attr := range []*types.String{&plan.BackupRegion, &plan.Encryption} {
+		if attr.IsUnknown() {
+			*attr = types.StringNull()
+		}
 	}
 	plan.Labels = types.ListNull(types.StringType)
 	plan.Links = types.ObjectNull(clusterLinksModel{}.attrTypes())

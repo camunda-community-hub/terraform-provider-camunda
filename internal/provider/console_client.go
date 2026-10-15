@@ -258,12 +258,30 @@ func (c *consoleClient) DeleteCluster(ctx context.Context, clusterID string) err
 
 // WaitClusterHealthy blocks until the cluster reports healthy twice in a row.
 func (c *consoleClient) WaitClusterHealthy(ctx context.Context, clusterID string) error {
+	return c.waitCluster(ctx, clusterID, console.CLUSTERCOMPONENTSTATUS_HEALTHY)
+}
+
+// WaitClusterSettled is WaitClusterHealthy for a cluster created with the
+// "External" encryption type, which stays at WaitingForInput until its keys
+// are supplied: it also stops there.
+func (c *consoleClient) WaitClusterSettled(ctx context.Context, clusterID string) error {
+	return c.waitCluster(ctx, clusterID, console.CLUSTERCOMPONENTSTATUS_HEALTHY, console.CLUSTERCOMPONENTSTATUS_WAITING_FOR_INPUT)
+}
+
+// waitCluster blocks until the cluster reports one of the statuses twice in a
+// row.
+func (c *consoleClient) waitCluster(ctx context.Context, clusterID string, targets ...console.ClusterComponentStatus) error {
+	target := make([]string, 0, len(targets))
+	for _, status := range targets {
+		target = append(target, string(status))
+	}
+
 	return c.awaitStatus(ctx, statusWait{
 		pending: []string{
 			string(console.CLUSTERCOMPONENTSTATUS_CREATING),
 			string(console.CLUSTERCOMPONENTSTATUS_UPDATING),
 		},
-		target:      []string{string(console.CLUSTERCOMPONENTSTATUS_HEALTHY)},
+		target:      target,
 		consecutive: 2,
 		refresh: func() (string, error) {
 			cluster, err := c.getAPICluster(ctx, clusterID)
