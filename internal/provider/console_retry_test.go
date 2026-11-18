@@ -163,6 +163,47 @@ func TestRateLimitTransportGivesUpWithLastResponse(t *testing.T) {
 	}
 }
 
+func TestRateLimitTransportRetriesGatewayErrors(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			tr, bodies, sleeps := recordingTransport([]int{status, 200}, nil)
+			req, err := http.NewRequest(http.MethodGet, "http://console.test/regions", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			resp, err := tr.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("RoundTrip: %v", err)
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("status = %d, want 200", resp.StatusCode)
+			}
+			if len(*bodies) != 2 || len(*sleeps) != 1 {
+				t.Errorf("attempts = %d, sleeps = %d, want 2 and 1", len(*bodies), len(*sleeps))
+			}
+		})
+	}
+}
+
+func TestRateLimitTransportDoesNotRetryGatewayErrorsOfUnsafeWrites(t *testing.T) {
+	tr, bodies, _ := recordingTransport([]int{http.StatusGatewayTimeout, 200}, nil)
+	req, err := http.NewRequest(http.MethodPost, "http://console.test/clusters", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusGatewayTimeout || len(*bodies) != 1 {
+		t.Errorf("status = %d, attempts = %d, want 504 after 1 attempt", resp.StatusCode, len(*bodies))
+	}
+}
+
 func TestRateLimitTransportDoesNotRetryOtherStatuses(t *testing.T) {
 	tr, bodies, _ := recordingTransport([]int{500}, nil)
 

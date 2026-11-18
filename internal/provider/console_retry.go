@@ -19,13 +19,13 @@ const (
 	defaultRateLimitMaxBackoff = 30 * time.Second
 	defaultRateLimitMaxWait    = 60 * time.Second
 
-	// maxDrainBytes is how much of a discarded 429 body is read to keep the
+	// maxDrainBytes is how much of a discarded retried body is read to keep the
 	// connection reusable.
 	maxDrainBytes = 4096
 )
 
 // replayableWriteKey marks a context whose POST or PATCH request may be
-// replayed after a 429.
+// replayed after a 429, 502, 503 or 504.
 type replayableWriteKey struct{}
 
 // withReplayableWrite marks a POST or PATCH call as safe to retry. Only use it
@@ -47,12 +47,23 @@ func canReplay(req *http.Request) bool {
 	return req.Context().Value(replayableWriteKey{}) != nil
 }
 
-// rateLimitTransport retries requests that the Console API rejects with
-// 429 Too Many Requests, as long as they are safe to replay (see canReplay).
+// isRetryableStatus reports whether a response status is transient: the
+// Console API is rate limiting or briefly unavailable.
+func isRetryableStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
+}
+
+// rateLimitTransport retries requests that the Console API answers with
+// 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable or
+// 504 Gateway Timeout, as long as they are safe to replay (see canReplay).
 //
 // It waits for the Retry-After header when the server sends one and otherwise
 // backs off exponentially with jitter. After maxRetries retries, or once the
-// next wait would exceed maxWait in total, it returns the last 429 response
+// next wait would exceed maxWait in total, it returns the last response
 // unchanged, so the caller reports the server's own message.
 type rateLimitTransport struct {
 	base       http.RoundTripper
@@ -90,7 +101,7 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 	for attempt := 0; ; attempt++ {
 		resp, err := t.base.RoundTrip(req)
-		if err != nil || resp.StatusCode != http.StatusTooManyRequests || attempt >= t.maxRetries {
+		if err != nil || !isRetryableStatus(resp.StatusCode) || attempt >= t.maxRetries {
 			return resp, err
 		}
 
@@ -106,8 +117,9 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		}
 		waited += delay
 
-		tflog.Debug(req.Context(), "Console API rate limited the request, retrying", map[string]interface{}{
+		tflog.Debug(req.Context(), "Console API answered with a transient error, retrying", map[string]interface{}{
 			"method":  req.Method,
+			"status":  resp.StatusCode,
 			"path":    req.URL.Path,
 			"attempt": attempt + 1,
 			"delay":   delay.String(),
@@ -119,14 +131,14 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		_ = resp.Body.Close()
 
 		if err := t.sleep(req.Context(), delay); err != nil {
-			return nil, fmt.Errorf("giving up on rate limited request: %w", err)
+			return nil, fmt.Errorf("giving up on retried request: %w", err)
 		}
 
 		// Recreate the body only now that the request is really going out again,
 		// so no early return leaves an unsent body open.
 		next, err := rewind(req)
 		if err != nil {
-			return nil, fmt.Errorf("unable to replay rate limited request: %w", err)
+			return nil, fmt.Errorf("unable to replay request: %w", err)
 		}
 		req = next
 	}
