@@ -204,6 +204,104 @@ func TestRateLimitTransportDoesNotRetryGatewayErrorsOfUnsafeWrites(t *testing.T)
 	}
 }
 
+func conflictTransport(message string, conflicts int) (*rateLimitTransport, *int, *[]time.Duration) {
+	var sleeps []time.Duration
+	attempts := 0
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts <= conflicts {
+			return response(http.StatusConflict, nil, `{"message":"`+message+`"}`), nil
+		}
+		return response(http.StatusOK, nil, "ok"), nil
+	})
+	tr := newRateLimitTransport(base)
+	tr.sleep = func(ctx context.Context, d time.Duration) error {
+		sleeps = append(sleeps, d)
+		return ctx.Err()
+	}
+	return tr, &attempts, &sleeps
+}
+
+const secretsInProgress = "Another change to the connector secrets of this cluster is in progress. Try again."
+
+func TestRateLimitTransportRetriesSecretsConflictOfUnmarkedPost(t *testing.T) {
+	tr, attempts, sleeps := conflictTransport(secretsInProgress, 2)
+	req, err := http.NewRequest(http.MethodPost, "http://console.test/clusters/c1/secrets", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK || *attempts != 3 || len(*sleeps) != 2 {
+		t.Errorf("status = %d, attempts = %d, sleeps = %d, want 200 after 3 attempts and 2 sleeps", resp.StatusCode, *attempts, len(*sleeps))
+	}
+}
+
+func TestRateLimitTransportDoesNotRetryOtherConflicts(t *testing.T) {
+	tr, attempts, _ := conflictTransport("Secret already exists", 5)
+	req, err := http.NewRequest(http.MethodPost, "http://console.test/clusters/c1/secrets", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusConflict || *attempts != 1 {
+		t.Errorf("status = %d, attempts = %d, want 409 after 1 attempt", resp.StatusCode, *attempts)
+	}
+	if !strings.Contains(string(body), "already exists") {
+		t.Errorf("body = %q, want the original body to stay readable", body)
+	}
+}
+
+func TestRateLimitTransportSecretsConflictStopsAtMaxRetries(t *testing.T) {
+	tr, attempts, _ := conflictTransport(secretsInProgress, 1000)
+	tr.maxWait = time.Hour
+	req, err := http.NewRequest(http.MethodPost, "http://console.test/clusters/c1/secrets", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusConflict || *attempts != tr.maxRetries+1 {
+		t.Errorf("status = %d, attempts = %d, want 409 after %d attempts", resp.StatusCode, *attempts, tr.maxRetries+1)
+	}
+}
+
+func TestRateLimitTransportSecretsConflictStopsAtMaxWait(t *testing.T) {
+	tr, _, sleeps := conflictTransport(secretsInProgress, 1000)
+	tr.maxWait = time.Second
+	tr.minBackoff = 400 * time.Millisecond
+	req, err := http.NewRequest(http.MethodDelete, "http://console.test/clusters/c1/secrets/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := tr.RoundTrip(req); err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+
+	var total time.Duration
+	for _, d := range *sleeps {
+		total += d
+	}
+	if total > tr.maxWait {
+		t.Errorf("waited %s, want at most %s", total, tr.maxWait)
+	}
+}
+
 func TestRateLimitTransportDoesNotRetryOtherStatuses(t *testing.T) {
 	tr, bodies, _ := recordingTransport([]int{500}, nil)
 

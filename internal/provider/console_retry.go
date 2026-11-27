@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -60,6 +62,8 @@ func isRetryableStatus(status int) bool {
 // rateLimitTransport retries requests that the Console API answers with
 // 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable or
 // 504 Gateway Timeout, as long as they are safe to replay (see canReplay).
+// It also retries the 409 Conflict for a connector secret change that is
+// already in progress (see isSecretsChangeInProgress), for every method.
 //
 // It waits for the Retry-After header when the server sends one and otherwise
 // backs off exponentially with jitter. After maxRetries retries, or once the
@@ -92,17 +96,41 @@ func newRateLimitTransport(base http.RoundTripper) *rateLimitTransport {
 	}
 }
 
-func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !canReplay(req) {
-		return t.base.RoundTrip(req)
+// isSecretsChangeInProgress reports whether resp is the 409 Conflict the
+// Console API sends when another change to the connector secrets of the same
+// cluster is still running. Such a request was rejected without any effect, so
+// it is safe to replay whatever its method. A 409 for another reason, such as
+// a secret that already exists, does not match.
+//
+// The start of the body is read to tell the cases apart and put back, so the
+// caller can still read the whole body.
+func isSecretsChangeInProgress(resp *http.Response) bool {
+	if resp.StatusCode != http.StatusConflict || resp.Body == nil {
+		return false
 	}
+
+	head, _ := io.ReadAll(io.LimitReader(resp.Body, maxDrainBytes))
+	resp.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+
+	message := strings.ToLower(string(head))
+	return strings.Contains(message, "another change") && strings.Contains(message, "in progress")
+}
+
+func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	replayable := canReplay(req)
 
 	var waited time.Duration
 
 	for attempt := 0; ; attempt++ {
 		resp, err := t.base.RoundTrip(req)
-		if err != nil || !isRetryableStatus(resp.StatusCode) || attempt >= t.maxRetries {
+		if err != nil || attempt >= t.maxRetries {
 			return resp, err
+		}
+		if !(replayable && isRetryableStatus(resp.StatusCode)) && !isSecretsChangeInProgress(resp) {
+			return resp, nil
 		}
 
 		// A request body can only be replayed if it can be recreated.
