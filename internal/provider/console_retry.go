@@ -129,7 +129,8 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		if err != nil || attempt >= t.maxRetries {
 			return resp, err
 		}
-		if !(replayable && isRetryableStatus(resp.StatusCode)) && !isSecretsChangeInProgress(resp) {
+		transient := replayable && isRetryableStatus(resp.StatusCode)
+		if !transient && !isSecretsChangeInProgress(resp) {
 			return resp, nil
 		}
 
